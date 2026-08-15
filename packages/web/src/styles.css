@@ -1,0 +1,86 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #f5f7fa;
+}
+
+.app-logo {
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.brand-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.page-card {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #eef0f4;
+}
+
+.mono {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+.terminal {
+  background: #0b1020;
+  color: #d6e2f5;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  padding: 12px 14px;
+  border-radius: 8px;
+  height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal .log-err { color: #fca5a5; }
+.terminal .log-ok { color: #86efac; }
+.terminal .log-warn { color: #fcd34d; }
+
+.grade-tag {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.metric-card {
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+.metric-card .n { font-size: 26px; font-weight: 700; }
+.metric-card .l { color: #6b7280; font-size: 13px; margin-top: 4px; }
+
+.tool-card {
+  cursor: pointer;
+  transition: box-shadow .15s, border-color .15s;
+}
+.tool-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 16px rgba(37,99,235,.10);
+}
+
+.step-row {
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: #fff;
+}
+
+.clause-pass { color: #16a34a; font-weight: 600; }
+.clause-fail { color: #dc2626; font-weight: 600; }
+.clause-na { color: #6b7280; }
