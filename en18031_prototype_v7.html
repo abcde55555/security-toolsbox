@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>EN18031 合规测试平台 v6 原型 · 全局工具库</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+  .terminal-bg { background-color: #1e1e1e; }
+  .terminal-text { color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; }
+  .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .cmd-card { transition: all 0.2s ease; }
+  .cmd-card:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  .tool-item-selected { background: linear-gradient(90deg, #eef2ff 0%, #e0e7ff 100%); border-color: #6366f1; }
+  .tab-active { background: #4f46e5 !important; color: white !important; border-color: #4f46e5 !important; }
+  .tab-inactive { background: white; color: #6b7280; border-color: #e5e7eb; }
+  .tab-inactive:hover { border-color: #c7d2fe; color: #4f46e5; }
+  .copy-toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: #111827; color: white; padding: 8px 16px; border-radius: 6px;
+    font-size: 13px; z-index: 1000; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  .copy-toast.show { opacity: 1; }
+  .view-hidden { display: none !important; }
+  .view-visible { display: flex !important; }
+
+  /* v7 新增：工具健康状态灯 */
+  .health-dot {
+    width: 10px; height: 10px; border-radius: 999px; display: inline-block;
+    box-shadow: 0 0 0 2px rgba(255,255,255,1), 0 0 0 3px rgba(0,0,0,0.05);
+  }
+  .health-green { background: #16a34a; }
+  .health-yellow { background: #eab308; }
+  .health-red { background: #dc2626; }
+  .health-unknown { background: #9ca3af; }
+
+  /* v7 新增：项目页功能区 Tab */
+  .proj-tab-btn {
+    padding: 8px 16px; font-size: 13px; font-weight: 500;
+    border-radius: 6px 6px 0 0; border: 1px solid transparent;
+    border-bottom: none; cursor: pointer; color: #6b7280;
+    background: transparent;
+  }
+  .proj-tab-btn:hover { color: #4f46e5; }
+  .proj-tab-btn.active {
+    color: #4f46e5; background: #ffffff; border-color: #e5e7eb;
+    position: relative; top: 1px;
+  }
+  .proj-tab-btn .badge-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    font-size: 10px; font-weight: 600; margin-left: 6px;
+  }
+
+  /* v7 新增：编排步骤卡片 */
+  .step-card {
+    border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px;
+    background: white; transition: all 0.15s ease;
+  }
+  .step-card:hover { border-color: #c7d2fe; }
+  .step-card.status-running {
+    border-color: #6366f1; background: linear-gradient(90deg, rgba(99,102,241,0.06), transparent 50%);
+  }
+  .step-card.status-success { border-left: 4px solid #16a34a; }
+  .step-card.status-fail { border-left: 4px solid #dc2626; background: #fff5f5; }
+  .step-card.status-pending { opacity: 0.65; }
+
+  /* v7 新增：仪表板小卡 */
+  .metric-card {
+    border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  }
+  .metric-value {
+    font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em;
+  }
+  .metric-label {
+    font-size: 12px; color: #6b7280; margin-top: 4px;
+  }
+  .grade-pass { color: #16a34a; }
+  .grade-fail { color: #dc2626; }
+  .grade-conditional { color: #ea580c; }
+
+  /* v7 新增：条款状态徽章 */
+  .clause-status {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  }
+  .clause-pass { background: #dcfce7; color: #166534; }
+  .clause-fail { background: #fee2e2; color: #991b1b; }
+  .clause-notcovered { background: #e5e7eb; color: #374151; }
+  .clause-conditional { background: #ffedd5; color: #9a3412; }
+
+  /* v7 新增：mini progress bar */
+  .mini-progress {
+    height: 6px; background: #e5e7eb; border-radius: 999px; overflow: hidden;
+  }
+  .mini-progress > div {
+    height: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed);
+    transition: width 0.3s ease;
+  }
+  
+  /* 模组标签样式 */
+  .badge-module {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: white;
+    border: none;
+  }
+  .badge-custom {
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #86efac;
+  }
+  /* 交互模式徽章：区分「命令行型」与「表单交互型」内置模组 */
+  .badge-form-mode {
+    background: #faf5ff;
+    color: #7e22ce;
+    border: 1px solid #e9d5ff;
+  }
+  .badge-cmd-mode {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+  }
+  /* 终端「结果输出模式」提示条 */
+  .term-output-banner {
+    background: linear-gradient(90deg, rgba(139,92,246,0.18), rgba(99,102,241,0.12));
+    border-bottom: 1px solid rgba(139,92,246,0.35);
+  }
+  
+  /* 工具库卡片悬浮效果 */
+  .tool-lib-card { transition: all 0.2s ease; }
+  .tool-lib-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.08); }
+  
+  /* 高级能力标签 */
+  .cap-tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; }
+  
+  /* 引用勾选框 */
+  .ref-checkbox {
+    width: 18px; height: 18px; border-radius: 4px; border: 2px solid #d1d5db;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s;
+  }
+  .ref-checkbox.checked { background: #4f46e5; border-color: #4f46e5; }
+  .ref-checkbox:hover { border-color: #6366f1; }
+  .ref-checkbox.checked::after {
+    content: ''; width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translate(1px, -1px);
+  }
+
+  /* ===== v7 增强：Web-First 部署状态 + 用户管理预留 UI ===== */
+  /* 部署状态徽章：体现 Web-First 架构选择，Linux 无头服务器部署 */
+  .deploy-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.06));
+    border: 1px solid rgba(34,197,94,0.25); color: #166534;
+  }
+  .deploy-badge .pulse-dot {
+    width: 7px; height: 7px; border-radius: 999px; background: #22c55e;
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
+    animation: pulse-green 2s infinite;
+  }
+  @keyframes pulse-green {
+    0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  }
+  .deploy-badge .lora { color: #047857; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
+
+  /* 工作空间切换器（预留） */
+  .ws-switcher {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 6px;
+    background: #fafafa; font-size: 12px; color: #374151; cursor: not-allowed;
+    user-select: none;
+  }
+  .ws-switcher .lock-icon { opacity: 0.55; }
+  .ws-switcher .reserved-tag {
+    font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb;
+  }
+
+  /* 用户头像下拉 */
+  .user-avatar-wrap { position: relative; }
+  .user-avatar {
+    width: 34px; height: 34px; border-radius: 999px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white; font-weight: 600; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #eef2ff; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .user-avatar:hover { transform: translateY(-0.5px); box-shadow: 0 4px 10px rgba(99,102,241,0.25); border-color: #c7d2fe; }
+  .user-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    width: 256px; background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+    z-index: 999; overflow: hidden; display: none;
+  }
+  .user-dropdown.open { display: block; }
+  .ud-head {
+    padding: 12px 14px; background: linear-gradient(135deg, #eef2ff, #faf5ff);
+    border-bottom: 1px solid #e5e7eb; display: flex; gap: 10px; align-items: center;
+  }
+  .ud-head .role-chip {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; font-weight: 600;
+  }
+  .ud-head .reserved { font-size: 10px; color: #6b7280; font-style: italic; margin-left: 4px; }
+  .ud-section-title {
+    padding: 8px 14px 4px; font-size: 10px; font-weight: 600;
+    color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .ud-item {
+    padding: 8px 14px; font-size: 13px; color: #374151; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ud-item:hover:not(.ud-item-disabled) { background: #f9fafb; color: #4f46e5; }
+  .ud-item-disabled { color: #9ca3af; cursor: not-allowed; }
+  .ud-item .soon-tag {
+    margin-left: auto; font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+  }
+  .ud-divider { height: 1px; background: #f3f4f6; margin: 4px 0; }
+  .ud-item svg { width: 15px; height: 15px; flex-shrink: 0; color: inherit; opacity: 0.85; }
+
+  /* 侧栏底部的用户管理预留入口（灰色锁定状态） */
+  .sidebar-reserved-section {
+    border-top: 1px solid #f3f4f6; padding: 8px 6px; background: #fafafa;
+  }
+  .sidebar-reserved-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+    border-radius: 6px; color: #9ca3af; cursor: not-allowed;
+    font-size: 12.5px; position: relative;
+  }
+  .sidebar-reserved-item:hover { background: #f3f4f6; color: #6b7280; }
+  .sidebar-reserved-item .soon-tag {
+    position: absolute; right: 8px;
+    font-size: 9.5px; padding: 1px 4px; border-radius: 3px;
+    background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb;
+  }
+  .sidebar-reserved-item svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
+
+  /* 小 Tooltip */
+  .tooltip-txt {
+    position: relative;
+  }
+  .tooltip-txt[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+    background: #111827; color: white; padding: 4px 8px; border-radius: 4px;
+    font-size: 11px; white-space: nowrap; z-index: 9999; opacity: 0.95;
+  }
+</style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between h-14">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+      <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+    </div>
+    <h1 class="text-lg font-semibold text-gray-800">EN18031 合规测试平台</h1>
+    <span class="text-xs text-gray-400 border-l border-gray-300 pl-3 ml-1">v1.0 · 全局工具库架构</span>
+    <!-- Web-First 部署状态徽章：显示当前为服务器模式、连接地址、延迟 -->
+    <span class="deploy-badge tooltip-txt" data-tip="Web-First 模式：后端部署于 Linux 无头服务器，浏览器直接访问。Electron 桌面壳为可选打包。">
+      <span class="pulse-dot"></span>
+      <span>Web-First · Server</span>
+      <span class="lora">https://en18031.corp.local</span>
+      <span style="font-size:10px;color:#15803d;background:rgba(22,163,74,0.1);padding:1px 5px;border-radius:4px;font-weight:600;">32ms</span>
+    </span>
+  </div>
+  <div class="flex items-center gap-3">
+    <!-- 工作空间切换器（Milestone 4 能力，首期预留） -->
+    <div class="ws-switcher tooltip-txt" data-tip="多团队 Workspace 隔离（Milestone 4 启用，首期仅默认工作空间）">
+      <svg class="w-3.5 h-3.5 lock-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      <span>默认工作空间</span>
+      <span class="reserved-tag">预留</span>
+    </div>
+    <div class="w-px h-6 bg-gray-200 mx-0.5"></div>
+    <button id="btnLib" onclick="switchView('lib')" class="px-3 py-1.5 text-sm border rounded-md tab-inactive">
+      <svg class="w-4 h-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+      工具库
+    </button>
+    <button id="btnTpl" onclick="switchView('tpl')" class="px-3 py-1.5 text-sm border rounded-md tab-inactive">
+      <svg class="w-4 h-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h6"/></svg>
+      模板管理
+    </button>
+    <button id="btnProj" onclick="switchView('proj')" class="px-3 py-1.5 text-sm border rounded-md tab-inactive">
+      <svg class="w-4 h-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+      项目管理
+    </button>
+    <div class="w-px h-6 bg-gray-200 mx-0.5"></div>
+    <!-- 用户头像下拉（首期角色预留：Milestone 4 打开真实鉴权） -->
+    <div class="user-avatar-wrap">
+      <div class="user-avatar" onclick="toggleUserDropdown(event)" title="Admin · 预留权限管理">
+        AD
+      </div>
+      <div class="user-dropdown" id="userDropdown" onclick="event.stopPropagation()">
+        <div class="ud-head">
+          <div style="width:36px;height:36px;border-radius:999px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0;">AD</div>
+          <div class="flex-1 min-w-0">
+            <div style="font-size:13px;font-weight:600;color:#111827;display:flex;align-items:center;gap:6px;">
+              Admin<span class="reserved">（首期默认单用户）</span>
+            </div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;display:flex;align-items:center;gap:6px;">
+              admin@local<span class="role-chip">系统管理员</span>
+            </div>
+          </div>
+        </div>
+        <div class="ud-section-title">个人设置</div>
+        <div class="ud-item ud-item-disabled" data-tip="Milestone 4 启用">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          个人资料<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          修改密码<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          API Token 管理<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-divider"></div>
+        <div class="ud-section-title">系统管理（Admin 专属）</div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          用户与角色管理<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          工作空间管理<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          系统设置<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+          审计日志总览<span class="soon-tag">Milestone 4</span>
+        </div>
+        <div class="ud-divider"></div>
+        <div class="ud-item ud-item-disabled">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          退出登录<span class="soon-tag">Milestone 4</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ==================== 工具库视图 ==================== -->
+<div id="viewLib" class="view-hidden h-[calc(100vh-3.5rem)]">
+  <aside class="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">分类</span>
+      <button class="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400" title="新建分类">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto custom-scroll p-2" id="libCategoryList"></div>
+    <div class="border-t border-gray-100 p-3 bg-gray-50 text-xs text-gray-500">
+      <div class="flex items-center gap-1.5 mb-1">
+        <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <b class="text-gray-700">关于工具库</b>
+      </div>
+      所有工具在此统一注册。<br>
+      模板/项目均<b class="text-gray-700">引用</b>工具，而非拥有。
+    </div>
+    <!-- 用户管理预留入口（侧栏底部） -->
+    <div class="sidebar-reserved-section">
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：Admin 专属用户 CRUD、角色分配">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <span>用户与角色</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：多团队隔离">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        <span>工作空间</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- 工具栏 -->
+    <div class="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3">
+      <div class="relative flex-1 max-w-md">
+        <svg class="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" placeholder="搜索工具名、标签、说明..." class="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400" oninput="filterLibTools(this.value)">
+      </div>
+      <div class="flex gap-1.5 border border-gray-200 rounded-md p-0.5">
+        <button onclick="setLibFilter('all')" id="libFAll" class="px-3 py-1 text-xs rounded bg-indigo-50 text-indigo-600 font-medium">全部</button>
+        <button onclick="setLibFilter('module')" id="libFModule" class="px-3 py-1 text-xs rounded text-gray-500 hover:bg-gray-50">内置模组</button>
+        <button onclick="setLibFilter('custom')" id="libFCustom" class="px-3 py-1 text-xs rounded text-gray-500 hover:bg-gray-50">自定义</button>
+      </div>
+      <div class="ml-auto flex gap-2">
+        <button onclick="scanDirForTools()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          扫描目录导入
+        </button>
+        <button onclick="openAddCustomTool()" class="px-3 py-1.5 text-sm bg-gray-800 text-white rounded-md hover:bg-gray-900 flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          注册自定义工具
+        </button>
+      </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="px-5 py-3 bg-white border-b border-gray-200 flex gap-4">
+      <div class="flex-1 border border-gray-100 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+          <svg class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500">工具总数</div>
+          <div class="text-xl font-semibold text-gray-800" id="statTotal">-</div>
+        </div>
+      </div>
+      <div class="flex-1 border border-gray-100 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+          <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500">内置模组</div>
+          <div class="text-xl font-semibold text-gray-800" id="statModule">-</div>
+        </div>
+      </div>
+      <div class="flex-1 border border-gray-100 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+          <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500">自定义工具</div>
+          <div class="text-xl font-semibold text-gray-800" id="statCustom">-</div>
+        </div>
+      </div>
+      <div class="flex-1 border border-gray-100 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+          <svg class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h6"/></svg>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500">模板引用</div>
+          <div class="text-xl font-semibold text-gray-800" id="statTplRef">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 工具卡片网格 -->
+    <div class="flex-1 overflow-y-auto custom-scroll p-5 bg-gray-50">
+      <div class="grid grid-cols-3 gap-4" id="libToolGrid"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ==================== 模板管理视图 ==================== -->
+<div id="viewTpl" class="view-hidden h-[calc(100vh-3.5rem)]">
+  <aside class="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">模板列表</span>
+      <button class="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto custom-scroll p-2" id="tplList"></div>
+    <div class="border-t border-gray-100 p-3 bg-gray-50 text-xs text-gray-500">
+      模板从<b class="text-gray-700">工具库</b>引用工具，<br>模板本身<b class="text-gray-700">不可执行</b>。
+    </div>
+    <!-- 用户管理预留入口（侧栏底部） -->
+    <div class="sidebar-reserved-section">
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：Admin 专属用户 CRUD、角色分配">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <span>用户与角色</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：多团队隔离">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        <span>工作空间</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto custom-scroll p-5 space-y-4">
+    <!-- 模板配置 -->
+    <section class="bg-white rounded-lg border border-gray-200">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-gray-800">模板配置</h3>
+        <div class="flex gap-2">
+          <span class="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded-full border border-indigo-200">IoT 网络扫描模板</span>
+          <span class="px-2 py-0.5 bg-gray-50 text-gray-500 text-xs rounded-full border border-gray-200">已保存</span>
+        </div>
+      </div>
+      <div class="px-5 py-4">
+        <div class="grid grid-cols-[90px_1fr] gap-3 items-center">
+          <span class="text-xs text-gray-500">模板名称</span>
+          <input type="text" value="IoT 网络扫描模板" class="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:border-indigo-400">
+          <span class="text-xs text-gray-500">说明</span>
+          <input type="text" value="针对 EN18031 网络资产发现与暴露面检测" class="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:border-indigo-400">
+          <span class="text-xs text-gray-500">默认 Shell</span>
+          <div class="flex gap-2 items-center">
+            <input type="text" value="powershell.exe（自动适配当前系统）" class="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:border-indigo-400">
+            <span class="px-2 py-0.5 bg-teal-50 text-teal-600 text-xs rounded-full border border-teal-200">自动适配</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 引用工具 -->
+    <section class="bg-white rounded-lg border border-gray-200">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold text-gray-800">引用工具</h3>
+          <span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full border border-blue-200 flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            引用模式 · 数据来自工具库
+          </span>
+        </div>
+        <div class="flex gap-2">
+          <span class="text-xs text-gray-400 self-center" id="tplRefCount">已引用 3 / 可用 7</span>
+          <button onclick="openToolRefModal()" class="px-3 py-1.5 text-sm border border-indigo-200 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            从工具库添加
+          </button>
+        </div>
+      </div>
+      <div class="px-5 py-4">
+        <div class="grid grid-cols-4 gap-3" id="tplRefGrid"></div>
+      </div>
+    </section>
+
+    <!-- 引用工具详情区 -->
+    <section class="bg-white rounded-lg border border-gray-200">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        <h3 class="text-sm font-semibold text-gray-800">工具说明 & 命令配置</h3>
+        <span class="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded-full" id="tplSelToolTag">nmap</span>
+        <span class="px-2 py-0.5 bg-purple-50 text-purple-600 text-xs rounded-full badge-module" id="tplSelToolTypeBadge">内置模组</span>
+        <span class="px-2 py-0.5 text-xs rounded-full badge-cmd-mode" id="tplSelToolModeBadge">命令行</span>
+      </div>
+      <div class="px-5 py-4">
+        <div class="flex gap-5">
+          <div class="w-56 flex-shrink-0">
+            <div class="bg-gray-50 border border-gray-100 rounded-lg p-3">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-11 h-11 rounded-lg flex items-center justify-center font-bold text-gray-700 bg-white shadow-sm" id="tplToolIcon">n</div>
+                <div>
+                  <div class="font-semibold text-gray-800" id="tplToolName">nmap</div>
+                  <div class="text-xs text-gray-400" id="tplToolVersion">v7.94</div>
+                </div>
+              </div>
+              <div class="text-xs text-gray-600 leading-relaxed mb-3" id="tplToolShortDesc"></div>
+              <div class="space-y-1.5 text-xs border-t border-gray-100 pt-2">
+                <div class="flex justify-between"><span class="text-gray-400">路径:</span><span class="text-gray-600 truncate ml-2" id="tplToolPath">-</span></div>
+                <div class="flex justify-between"><span class="text-gray-400">被引用:</span><span class="text-gray-600" id="tplToolRefCount">-</span></div>
+              </div>
+            </div>
+            <!-- 高级能力标签 (模组才有) -->
+            <div class="mt-2" id="tplModuleCaps">
+              <div class="text-xs font-medium text-gray-500 mb-1.5">高级能力（模组）</div>
+              <div class="flex flex-wrap gap-1" id="tplModuleCapsList"></div>
+            </div>
+          </div>
+          <div class="flex-1">
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">预设命令（勾选的将出现在项目中）</span>
+              <button onclick="addTplLocalCmd()" class="text-xs px-2 py-1 border border-dashed border-gray-300 rounded hover:border-indigo-400 hover:text-indigo-600">+ 追加本地命令</button>
+            </div>
+            <div class="mb-2 px-3 py-2 rounded-md border border-purple-200 bg-purple-50/50 flex items-start gap-2 hidden" id="tplFormModeHint">
+              <svg class="w-3.5 h-3.5 text-purple-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span class="text-xs text-purple-700 leading-relaxed">表单交互型模组：项目侧以参数表单一键执行，下方命令由模组内部自动构建并调用，仅作只读参考，无需用户手动输入。</span>
+            </div>
+            <div class="space-y-2 max-h-80 overflow-y-auto custom-scroll pr-1" id="tplCmdList2"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 命令预览 -->
+    <section class="bg-white rounded-lg border border-gray-200">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        <h3 class="text-sm font-semibold text-gray-800">命令预览</h3>
+        <span class="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded-full">只读 · 模板不可执行</span>
+      </div>
+      <div class="px-5 py-4">
+        <div class="bg-[#1b1e27] rounded-lg p-4 font-mono text-sm text-gray-300">
+          <div class="text-gray-500"># 当前系统命令行: powershell.exe</div>
+          <div><span class="text-green-400">PS D:\proj></span> nmap -sV -p- 192.168.1.20</div>
+          <div class="text-gray-500"># 预览仅展示命令形态，实际执行请在「项目管理」中基于本模板新建项目</div>
+        </div>
+        <div class="mt-3 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          模板不可执行命令。请基于此模板新建项目，在项目内执行。
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ==================== 项目管理视图 ==================== -->
+<div id="viewProj" class="view-hidden h-[calc(100vh-3.5rem)]">
+  <aside class="w-60 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">项目列表</span>
+      <button class="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto custom-scroll p-2" id="projList"></div>
+    <div class="border-t border-gray-100 p-3 bg-gray-50">
+      <div class="text-xs text-gray-500 mb-1">当前项目</div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-sm font-medium text-gray-800 truncate" id="projName">智能摄像头 X1</span>
+        <button onclick="toggleProjectInfo()" class="text-gray-400 hover:text-indigo-600 flex-shrink-0">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        </button>
+      </div>
+      <div class="text-xs text-gray-400" id="projTpl">模板: IoT 网络扫描</div>
+    </div>
+    <!-- 用户管理预留入口（侧栏底部） -->
+    <div class="sidebar-reserved-section">
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：Admin 专属用户 CRUD、角色分配">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <span>用户与角色</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+      <div class="sidebar-reserved-item tooltip-txt" data-tip="Milestone 4 启用：多团队隔离">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        <span>工作空间</span>
+        <span class="soon-tag">Milestone 4</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- v7 项目页功能区 Tab 栏 -->
+    <div class="bg-gray-100 px-4 pt-3 pb-0 flex items-end gap-0 border-b border-gray-200">
+      <button onclick="switchProjTab('vars')" id="projTabVars" class="proj-tab-btn active">
+        <svg class="w-3.5 h-3.5 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        目标与工具
+      </button>
+      <button onclick="switchProjTab('flow')" id="projTabFlow" class="proj-tab-btn">
+        <svg class="w-3.5 h-3.5 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+        编排进度<span class="badge-count" style="background:#4f46e5;color:white" id="projFlowCountBadge">5</span>
+      </button>
+      <button onclick="switchProjTab('term')" id="projTabTerm" class="proj-tab-btn">
+        <svg class="w-3.5 h-3.5 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        终端
+      </button>
+      <button onclick="switchProjTab('log')" id="projTabLog" class="proj-tab-btn">
+        <svg class="w-3.5 h-3.5 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        审计日志
+      </button>
+      <button onclick="switchProjTab('report')" id="projTabReport" class="proj-tab-btn">
+        <svg class="w-3.5 h-3.5 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        合规报告
+      </button>
+      <div class="flex-1"></div>
+      <div class="pb-2 flex items-center gap-2">
+        <button onclick="runOrchestrator()" class="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          一键跑整套流程
+        </button>
+        <button class="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-md hover:bg-white">
+          <svg class="w-4 h-4 inline-block -mt-0.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          中断
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ Tab 1: 目标变量 + 工具详情 ============ -->
+    <section id="projPanelVars" class="flex-1 overflow-y-auto custom-scroll bg-white">
+      <!-- 顶部：项目级变量面板 -->
+      <div class="border-b border-gray-100 p-5 bg-gradient-to-br from-gray-50 to-white">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-indigo-500"></span>
+            项目级目标变量
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full badge-form-mode" title="模板中所有 {{project.xxx}} 占位符统一从此处读取，一次填写所有工具复用">一次填写 · 全模板复用</span>
+          </h3>
+          <button class="text-xs px-2.5 py-1 border border-dashed border-gray-300 rounded hover:border-indigo-400 hover:text-indigo-600">+ 新增变量</button>
+        </div>
+        <div id="projectVariablesGrid" class="grid grid-cols-4 gap-3"></div>
+      </div>
+
+      <!-- 工具详情区 -->
+      <div class="p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <h2 class="text-base font-semibold text-gray-800">工具详情（手动单工具执行模式）</h2>
+            <span class="px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded-full border border-green-200">已绑定</span>
+            <span class="px-2 py-0.5 text-xs rounded-full badge-module" id="projToolTypeBadge">内置模组</span>
+            <span class="px-2 py-0.5 text-xs rounded-full badge-cmd-mode" id="projToolModeBadge">命令行</span>
+            <span class="flex items-center gap-1.5 text-xs text-gray-500" id="projToolHealth">
+              <span class="health-dot health-green"></span>
+              <span>运行正常 · v7.94</span>
+            </span>
+          </div>
+          <button onclick="openToolSelector()" class="px-3 py-1.5 text-sm border border-indigo-200 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h6"/></svg>
+            切换工具
+          </button>
+        </div>
+
+        <div class="flex gap-5">
+          <div class="w-64 flex-shrink-0 border-r border-gray-100 pr-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl font-bold text-gray-700" id="toolIcon">n</div>
+              <div>
+                <div class="text-base font-semibold text-gray-800" id="toolName">nmap</div>
+                <div class="text-xs text-gray-400" id="toolVersion">v7.94</div>
+              </div>
+            </div>
+            <div class="text-sm text-gray-600 leading-relaxed mb-3" id="toolDesc"></div>
+            <div class="space-y-2 text-xs mb-4">
+              <div class="flex justify-between"><span class="text-gray-400">来源:</span><span class="text-gray-600" id="toolSource">自动解析</span></div>
+              <div class="flex justify-between"><span class="text-gray-400">路径:</span><span class="text-gray-600 truncate ml-2" id="toolPath">D:\tools\nmap.exe</span></div>
+            </div>
+
+            <!-- v7 新增：EN18031 条款映射 -->
+            <div class="border border-indigo-100 rounded-lg bg-indigo-50/40 p-3">
+              <div class="text-xs font-semibold text-indigo-900 mb-2 flex items-center justify-between">
+                <span>🔗 EN18031 条款映射</span>
+                <span class="text-[10px] text-indigo-500">共 <span id="clauseMappingCount">2</span> 条</span>
+              </div>
+              <div id="clauseMappingList" class="space-y-1.5"></div>
+            </div>
+          </div>
+
+          <div class="flex-1 min-w-0" id="toolContentArea">
+            <!-- 由 renderTool() 根据交互模式动态填充 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Tab 2: 编排进度 ============ -->
+    <section id="projPanelFlow" class="view-hidden flex-1 overflow-hidden bg-gray-50 flex flex-col">
+      <!-- 顶部执行摘要 -->
+      <div class="bg-white border-b border-gray-200 p-4">
+        <div class="grid grid-cols-5 gap-3 mb-3">
+          <div class="metric-card"><div class="metric-value" style="font-size:22px" id="flowProgressPct">29%</div><div class="metric-label">整体进度</div></div>
+          <div class="metric-card"><div class="metric-value grade-pass" style="font-size:22px">2/5</div><div class="metric-label">已完成步骤</div></div>
+          <div class="metric-card"><div class="metric-value" style="font-size:22px;color:#4f46e5">1/5</div><div class="metric-label">运行中</div></div>
+          <div class="metric-card"><div class="metric-value grade-fail" style="font-size:22px">0</div><div class="metric-label">失败步骤</div></div>
+          <div class="metric-card"><div class="metric-value" style="font-size:22px;color:#ea580c">~ 12m</div><div class="metric-label">预计剩余</div></div>
+        </div>
+        <div class="mini-progress"><div style="width:29%"></div></div>
+      </div>
+      <div class="flex-1 overflow-y-auto custom-scroll p-4" id="flowStepList"></div>
+    </section>
+
+    <!-- ============ Tab 3: 终端 ============ -->
+    <section id="projPanelTerm" class="view-hidden flex-1 overflow-hidden flex flex-col">
+      <div class="flex-1 flex flex-col terminal-bg">
+        <div class="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] border-b border-[#3e3e3e]">
+          <div class="flex items-center gap-2">
+            <div class="flex gap-1.5">
+              <span class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+              <span class="w-3 h-3 rounded-full bg-green-500"></span>
+            </div>
+            <span class="text-xs text-gray-400 ml-2" id="termTitle">实时命令行 - powershell.exe</span>
+          </div>
+          <button class="text-gray-400 hover:text-white" title="清除终端显示" onclick="clearTerminal()">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+        </div>
+        <div class="term-output-banner px-4 py-1.5 flex items-center gap-2 hidden" id="termOutputBanner">
+          <svg class="w-3.5 h-3.5 text-purple-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          <span class="text-xs text-purple-200">结果输出模式：当前为表单交互型模组，下方区域仅展示模组运行结果，无需手动输入命令</span>
+        </div>
+        <div class="flex-1 overflow-y-auto terminal-text p-3 text-sm leading-6 custom-scroll" id="terminalOutput"></div>
+        <div class="border-t border-[#3e3e3e] p-3 flex items-center gap-2" id="termInputRow">
+          <span class="text-green-500 text-sm">PS D:\proj></span>
+          <input type="text" id="terminalInput" class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500" placeholder="输入命令或从上方工具点击注入..." onkeypress="handleTerminalInput(event)">
+          <button onclick="executeTerminalCmd()" class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">执行</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Tab 4: 审计日志 ============ -->
+    <section id="projPanelLog" class="view-hidden flex-1 overflow-hidden flex flex-col bg-white">
+      <div class="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-700">执行日志</span>
+          <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          <span class="text-xs text-gray-400">只追加 · 不可清除</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input class="text-xs px-2 py-1 border border-gray-200 rounded w-40 focus:outline-none focus:border-indigo-400" placeholder="🔍 搜索日志...">
+          <select class="text-xs px-2 py-1 border border-gray-200 rounded">
+            <option>全部状态</option><option>成功</option><option>失败</option><option>执行中</option>
+          </select>
+          <button class="text-gray-400 hover:text-indigo-600" title="导出日志">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto custom-scroll p-3 space-y-2" id="logList"></div>
+      <div class="px-3 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400">
+        📁 日志文件: audit.log · append-only
+      </div>
+    </section>
+
+    <!-- ============ Tab 5: 合规报告 ============ -->
+    <section id="projPanelReport" class="view-hidden flex-1 overflow-y-auto custom-scroll bg-gray-50">
+      <!-- 顶部：报告头 + 仪表板 -->
+      <div class="bg-gradient-to-br from-slate-900 to-indigo-900 text-white p-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-slate-400 uppercase tracking-wide">EN18031 合规测试报告 · 快照</div>
+            <h2 class="text-2xl font-bold mt-1" id="rptProjectName">智能摄像头 X1</h2>
+            <div class="text-sm text-slate-300 mt-1">
+              模板: IoT 网络扫描 · 标准版本: EN18031:2019 · 目标合规格: L2 · 运行时间: 2026-08-14 21:20 ~ 进行中
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="rptGradeBadge" class="px-4 py-2 rounded-lg text-lg font-bold grade-conditional" style="background:rgba(255,255,255,0.08);border:1px solid rgba(234,88,12,0.5)">⏳ CONDITIONAL PASS</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-5 gap-3 mt-5">
+          <div class="metric-card" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1)">
+            <div class="metric-value grade-pass" id="rptPass">6</div>
+            <div class="metric-label" style="color:#94a3b8">PASS 条款</div>
+          </div>
+          <div class="metric-card" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1)">
+            <div class="metric-value grade-fail" id="rptFail">1</div>
+            <div class="metric-label" style="color:#94a3b8">FAIL 条款</div>
+          </div>
+          <div class="metric-card" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1)">
+            <div class="metric-value" style="color:#64748b" id="rptNC">3</div>
+            <div class="metric-label" style="color:#94a3b8">NOT COVERED</div>
+          </div>
+          <div class="metric-card" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1)">
+            <div class="metric-value grade-conditional" id="rptCond">1</div>
+            <div class="metric-label" style="color:#94a3b8">CONDITIONAL</div>
+          </div>
+          <div class="metric-card" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1)">
+            <div class="metric-value" style="color:#a5b4fc">11 / 15</div>
+            <div class="metric-label" style="color:#94a3b8">L2 适用条款覆盖</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mt-4">
+          <button class="px-3 py-1.5 text-sm bg-white text-slate-900 rounded-md hover:bg-slate-100 font-medium">⬇ 导出 PDF</button>
+          <button class="px-3 py-1.5 text-sm bg-slate-700 text-white rounded-md hover:bg-slate-600">⬇ 导出 Excel</button>
+          <button class="px-3 py-1.5 text-sm border border-slate-600 text-slate-200 rounded-md hover:bg-slate-700">🔄 重新生成报告</button>
+          <div class="flex-1"></div>
+          <div class="text-xs text-slate-400">本快照为「部分运行」状态 — 待所有步骤完成后可一键重算为最终定级</div>
+        </div>
+      </div>
+
+      <!-- 条款详情 -->
+      <div class="p-5">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <span class="w-1.5 h-4 rounded-full bg-indigo-500"></span>
+          条款判定详情（按章节分组）
+        </h3>
+        <div id="reportClauseGroups" class="space-y-4"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ 弹窗：模板从工具库引用工具 ============ -->
+<div id="toolRefModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+  <div class="bg-white rounded-xl shadow-2xl w-[580px] max-h-[80vh] flex flex-col">
+    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div>
+        <h3 class="text-lg font-semibold text-gray-800">从工具库引用工具</h3>
+        <p class="text-xs text-gray-500 mt-0.5">勾选要添加到此模板的工具。所有工具均来自全局工具库，修改不影响其他模板。</p>
+      </div>
+      <button onclick="closeToolRefModal()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-3 border-b border-gray-100">
+      <div class="relative">
+        <svg class="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" placeholder="搜索要引用的工具..." class="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400" oninput="filterRefTools(this.value)">
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto p-2" id="refModalList"></div>
+    <div class="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-between items-center rounded-b-xl">
+      <div class="text-xs text-gray-500">已选 <span id="refSelCount">0</span> 个 · 原有引用会保留但在上方显示</div>
+      <button onclick="saveRefSelections()" class="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700">确认引用</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗：工具选择（项目中） ============ -->
+<div id="toolSelectorModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+  <div class="bg-white rounded-xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
+    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-gray-800">选择工具</h3>
+      <button onclick="closeToolSelector()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-4 border-b border-gray-100">
+      <div class="relative">
+        <svg class="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" placeholder="搜索工具..." class="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400" oninput="filterTools(this.value)">
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto p-2" id="modalToolList"></div>
+    <div class="px-6 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 rounded-b-xl">
+      提示：列表仅展示当前项目绑定模板所引用的工具
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗：项目设置 ============ -->
+<div id="projectInfoPanel" class="hidden fixed inset-0 bg-black/30 z-40 flex items-center justify-center" onclick="if(event.target===this)toggleProjectInfo()">
+  <div class="bg-white rounded-lg shadow-xl w-96 p-5">
+    <h3 class="text-base font-semibold text-gray-800 mb-4">项目设置</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">项目名称</label>
+        <input type="text" value="智能摄像头 X1 合规测试" class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">绑定模板</label>
+        <select class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400 bg-white">
+          <option>IoT 网络扫描模板</option><option>Web 服务测试模板</option><option>固件分析模板</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">项目描述</label>
+        <textarea class="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-indigo-400 resize-none" rows="3">针对智能摄像头 X1 型号的 EN18031 合规性测试项目</textarea>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="toggleProjectInfo()" class="px-4 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50">取消</button>
+      <button onclick="toggleProjectInfo()" class="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="copyToast" class="copy-toast">命令已复制到剪贴板</div>
+
+<script>
+// ==================== 数据：全局工具库 ====================
+const libCategories = [
+  { id: 'all', name: '全部工具', count: 0, active: true },
+  { id: 'network', name: '网络扫描', count: 3, active: false },
+  { id: 'web', name: 'Web 测试', count: 2, active: false },
+  { id: 'firmware', name: '固件分析', count: 1, active: false },
+  { id: 'crypto', name: '密码/认证', count: 1, active: false }
+];
+
+const tools = {
+  // 内置模组
+  nmap: {
+    id: 'nmap', name: 'nmap', version: 'v7.94', icon: 'n',
+    type: 'module', category: 'network', source: '内置模组',
+    path: 'D:\\tools\\nmap.exe',
+    desc: 'EN18031 合规专用网络扫描模组。内置主机发现、端口枚举、版本探测、OS 指纹、EN18031 合规报告生成。',
+    shortDesc: '网络发现与安全审计（合规报告内置）',
+    refCount: 2, healthStatus: 'green',
+    caps: ['参数表单', 'JSON 输出解析', 'EN18031 报告生成', '自动分级判定'],
+    clauseMappings: [
+      { clauseId: '5.3-1', title: '不必要网络服务禁用', severity: 'high' },
+      { clauseId: '5.3-2', title: '明文管理协议不得开放', severity: 'high' }
+    ],
+    commands: [
+      { id: 1, text: 'nmap -sn <网段>', desc: '主机发现（Ping Scan），扫描指定网段内存活的主机', checked: true, fromLocal: false },
+      { id: 2, text: 'nmap -sV -p- <目标IP>', desc: '全端口版本探测，检测所有端口的服务版本', checked: true, fromLocal: false },
+      { id: 3, text: 'nmap --script vuln <目标IP>', desc: '漏洞脚本扫描，使用 NSE 漏洞检测脚本', checked: true, fromLocal: false },
+      { id: 4, text: 'nmap -O <目标IP>', desc: 'OS 指纹识别，尝试识别目标操作系统', checked: false, fromLocal: false }
+    ]
+  },
+  'en18031-port-check': {
+    id: 'en18031-port-check', name: 'EN18031 端口合规', version: 'v1.0', icon: 'E',
+    type: 'module', category: 'network', source: '内置模组',
+    path: 'builtin://modules/en18031-port-check',
+    desc: 'EN18031 内置合规模组：根据标准自动判定端口开放合理性，生成合规报告并指出不允许开放的端口。',
+    shortDesc: '按 EN18031 标准判定端口合规性',
+    refCount: 1, healthStatus: 'green',
+    caps: ['参数表单', '合规阈值校验', '报告生成', '自动分级判定', 'Excel 导出'],
+    interactionMode: 'form',
+    clauseMappings: [
+      { clauseId: '5.3-2', title: '明文管理协议不得开放（Telnet/HTTP）', severity: 'high' },
+      { clauseId: '5.3-3', title: '使用加密管理协议（SSH/HTTPS）', severity: 'middle' },
+      { clauseId: '5.3-5', title: 'UPnP/SSDP/MDNS 不得对外暴露', severity: 'middle' }
+    ],
+    formFields: [
+      { id: 'target', label: '目标 IP', type: 'text', placeholder: '192.168.1.20', required: true, value: '192.168.1.20' },
+      { id: 'level', label: '合规等级', type: 'select', options: ['Level 1 (基础)', 'Level 2 (标准)', 'Level 3 (增强)'], value: 'Level 2 (标准)' },
+      { id: 'ports', label: '检查端口', type: 'text', placeholder: '留空=全端口，如 22,80,443', value: '' },
+      { id: 'report', label: '生成合规报告', type: 'checkbox', value: true }
+    ],
+    commands: [
+      { id: 1, text: 'en18031-port-check --target <目标IP>', desc: '执行 EN18031 端口合规检查（自动生成报告）', checked: true, fromLocal: false }
+    ]
+  },
+  nuclei: {
+    id: 'nuclei', name: 'nuclei', version: 'v3.0', icon: 'N',
+    type: 'module', category: 'web', source: '内置模组',
+    path: 'D:\\tools\\nuclei.exe',
+    desc: '基于模板的漏洞扫描器，集成 EN18031 CVE 判定逻辑与报告对齐。',
+    shortDesc: 'CVE 漏洞扫描 + 合规报告对齐',
+    refCount: 2, healthStatus: 'yellow',
+    caps: ['参数表单', 'EN18031 CVE 对齐', '报告生成'],
+    clauseMappings: [
+      { clauseId: '5.4-1', title: '加密套件不得使用已知弱算法', severity: 'high' },
+      { clauseId: '5.1-1', title: '默认账户强制修改密码', severity: 'high' }
+    ],
+    commands: [
+      { id: 1, text: 'nuclei -u <目标URL>', desc: '扫描单个 URL', checked: true, fromLocal: false },
+      { id: 2, text: 'nuclei -u <目标URL> -tags cve', desc: '仅扫描 CVE 相关漏洞', checked: true, fromLocal: false }
+    ]
+  },
+
+  // 自定义工具
+  masscan: {
+    id: 'masscan', name: 'masscan', version: 'v1.3', icon: 'm',
+    type: 'custom', category: 'network', source: '自定义',
+    path: 'D:\\tools\\masscan.exe',
+    desc: '超快的 TCP 端口扫描器，使用异步扫描技术。适用于大规模端口快速探测。',
+    shortDesc: '快速大端口扫描',
+    refCount: 1, healthStatus: 'green',
+    caps: [],
+    clauseMappings: [
+      { clauseId: '5.3-1', title: '不必要网络服务禁用', severity: 'middle' }
+    ],
+    commands: [
+      { id: 1, text: 'masscan -p1-65535 <网段>', desc: '全端口快速扫描', checked: true, fromLocal: false },
+      { id: 2, text: 'masscan -p80,443,8080 <目标IP>', desc: '常用 Web 端口扫描', checked: true, fromLocal: false }
+    ]
+  },
+  nikto: {
+    id: 'nikto', name: 'nikto', version: 'v2.5', icon: 'N',
+    type: 'custom', category: 'web', source: '自定义',
+    path: 'D:\\tools\\nikto.pl',
+    desc: 'Web 服务器漏洞扫描器，可检测数千种潜在的不安全文件。',
+    shortDesc: 'Web 服务器配置/文件扫描',
+    refCount: 1, healthStatus: 'red',
+    caps: [],
+    clauseMappings: [
+      { clauseId: '5.4-1', title: '加密套件不得使用已知弱算法', severity: 'middle' }
+    ],
+    commands: [
+      { id: 1, text: 'nikto -h <目标IP>', desc: '扫描指定 Web 服务器', checked: true, fromLocal: false }
+    ]
+  },
+  binwalk: {
+    id: 'binwalk', name: 'binwalk', version: 'v2.3', icon: 'B',
+    type: 'custom', category: 'firmware', source: '自定义',
+    path: 'D:\\tools\\binwalk.exe',
+    desc: '固件分析工具，用于识别并提取固件中的文件系统、代码段等。',
+    shortDesc: '固件文件结构分析与提取',
+    refCount: 1, healthStatus: 'green',
+    caps: [],
+    clauseMappings: [
+      { clauseId: '5.5-2', title: '固件防逆向读取保护', severity: 'high' },
+      { clauseId: '5.5-1', title: '不得硬编码密钥/凭据', severity: 'high' }
+    ],
+    commands: [
+      { id: 1, text: 'binwalk <固件文件>', desc: '分析固件结构', checked: true, fromLocal: false }
+    ]
+  },
+  'en18031-crypto-check': {
+    id: 'en18031-crypto-check', name: 'EN18031 加密合规', version: 'v1.0', icon: '🔐',
+    type: 'module', category: 'crypto', source: '内置模组',
+    path: 'builtin://modules/en18031-crypto-check',
+    desc: 'EN18031 内置加密合规模组：检测 TLS 版本、密码套件、证书配置、密钥强度是否满足标准要求。',
+    shortDesc: 'TLS / 密码套件合规自动判定',
+    refCount: 0, healthStatus: 'yellow',
+    caps: ['参数表单', '合规阈值校验', '报告生成', '自动分级判定'],
+    interactionMode: 'form',
+    clauseMappings: [
+      { clauseId: '5.4-1', title: '加密套件不得使用已知弱算法', severity: 'high' },
+      { clauseId: '5.4-2', title: 'TLS 证书合法有效且正确配置', severity: 'middle' },
+      { clauseId: '5.4-3', title: '固件升级必须完整性校验+签名', severity: 'high' }
+    ],
+    formFields: [
+      { id: 'target', label: '目标地址', type: 'text', placeholder: '192.168.1.20:443', required: true, value: '192.168.1.20:443' },
+      { id: 'tlsver', label: 'TLS 最低版本', type: 'select', options: ['TLS 1.0', 'TLS 1.1', 'TLS 1.2', 'TLS 1.3'], value: 'TLS 1.2' },
+      { id: 'cert', label: '校验证书', type: 'checkbox', value: true },
+      { id: 'report', label: '生成合规报告', type: 'checkbox', value: true }
+    ],
+    commands: [
+      { id: 1, text: 'en18031-crypto-check --target <目标IP>:<端口>', desc: '检查 TLS 配置合规性', checked: true, fromLocal: false }
+    ]
+  }
+};
+
+// 统计
+libCategories.forEach(c => { if (c.id === 'all') c.count = Object.keys(tools).length; else c.count = Object.values(tools).filter(t => t.category === c.id).length; });
+
+// ==================== 其他数据 ====================
+const tplTemplates = [
+  { id: 1, name: "IoT 网络扫描", refToolIds: ['nmap', 'masscan', 'en18031-port-check'], active: true },
+  { id: 2, name: "Web 服务测试", refToolIds: ['nuclei', 'nikto', 'nmap'], active: false },
+  { id: 3, name: "固件分析", refToolIds: ['binwalk', 'en18031-crypto-check'], active: false }
+];
+const projects = [
+  { id: 1, name: "智能摄像头 X1", template: "IoT 网络扫描", active: true,
+    variables: [
+      { key: 'targetIp', label: '目标 IP', value: '192.168.1.20', type: 'text', required: true },
+      { key: 'targetCidr', label: '目标网段', value: '192.168.1.0/24', type: 'cidr', required: true },
+      { key: 'complianceLevel', label: '目标合规格', value: 'L2 标准', type: 'select', options: ['L1 基础', 'L2 标准', 'L3 增强'], required: true },
+      { key: 'targetList', label: '待测设备清单', value: '192.168.1.20, 192.168.1.21', type: 'list', required: false }
+    ]
+  },
+  { id: 2, name: "智能网关 G2", template: "IoT 网络扫描", active: false,
+    variables: [
+      { key: 'targetIp', label: '目标 IP', value: '10.0.0.1', type: 'text', required: true },
+      { key: 'targetCidr', label: '目标网段', value: '10.0.0.0/24', type: 'cidr', required: true },
+      { key: 'complianceLevel', label: '目标合规格', value: 'L3 增强', type: 'select', options: ['L1 基础', 'L2 标准', 'L3 增强'], required: true }
+    ]
+  },
+  { id: 3, name: "蓝牙门锁 L3", template: "固件分析", active: false,
+    variables: [
+      { key: 'firmwareFile', label: '固件文件路径', value: '/tmp/lock-firmware.bin', type: 'file', required: true },
+      { key: 'complianceLevel', label: '目标合规格', value: 'L2 标准', type: 'select', options: ['L1 基础', 'L2 标准', 'L3 增强'], required: true }
+    ]
+  },
+  { id: 4, name: "Web 服务器 T1", template: "Web 服务测试", active: false,
+    variables: [
+      { key: 'targetUrl', label: '目标 URL', value: 'https://app.test-internal.local', type: 'text', required: true },
+      { key: 'complianceLevel', label: '目标合规格', value: 'L2 标准', type: 'select', required: true }
+    ]
+  }
+];
+
+// v7 新增：模板编排步骤（每个模板对应一份编排）
+const templateSteps = {
+  "IoT 网络扫描": [
+    { stepId: 'hostDiscovery', title: '第 1 步 · 主机发现', toolId: 'nmap', position: 1,
+      dependsOn: [], onFailure: 'abort', weight: 2, status: 'success', progress: 100 },
+    { stepId: 'fastPortScan', title: '第 2 步 · 全端口快速枚举', toolId: 'masscan', position: 2,
+      dependsOn: ['hostDiscovery'], onFailure: 'continue', weight: 3, status: 'success', progress: 100 },
+    { stepId: 'deepPortScan', title: '第 3 步 · 端口版本探测', toolId: 'nmap', position: 3,
+      dependsOn: ['fastPortScan'], onFailure: 'continue', weight: 3, status: 'running', progress: 45 },
+    { stepId: 'portCompliance', title: '第 4 步 · 端口合规判定', toolId: 'en18031-port-check', position: 4,
+      dependsOn: ['deepPortScan'], onFailure: 'continue', weight: 2, status: 'pending', progress: 0 },
+    { stepId: 'reportSnapshot', title: '第 5 步 · 生成报告快照', toolId: null, position: 5,
+      dependsOn: ['portCompliance'], onFailure: 'abort', weight: 1, status: 'pending', progress: 0, virtual: true }
+  ],
+  "Web 服务测试": [
+    { stepId: 'portDiscovery', title: '第 1 步 · 端口与服务发现', toolId: 'nmap', position: 1,
+      dependsOn: [], onFailure: 'continue', weight: 2, status: 'pending', progress: 0 },
+    { stepId: 'webFileScan', title: '第 2 步 · Web 文件/配置扫描', toolId: 'nikto', position: 2,
+      dependsOn: ['portDiscovery'], onFailure: 'continue', weight: 2, status: 'pending', progress: 0 },
+    { stepId: 'cveScan', title: '第 3 步 · CVE 漏洞扫描', toolId: 'nuclei', position: 3,
+      dependsOn: ['webFileScan'], onFailure: 'continue', weight: 4, status: 'pending', progress: 0 }
+  ],
+  "固件分析": [
+    { stepId: 'fwUnpack', title: '第 1 步 · 固件解包与结构分析', toolId: 'binwalk', position: 1,
+      dependsOn: [], onFailure: 'abort', weight: 3, status: 'pending', progress: 0 },
+    { stepId: 'cryptoCheck', title: '第 2 步 · 加密配置合规检查', toolId: 'en18031-crypto-check', position: 2,
+      dependsOn: ['fwUnpack'], onFailure: 'continue', weight: 2, status: 'pending', progress: 0 }
+  ]
+};
+
+// v7 新增：EN18031 条款库种子数据
+const clauseLibrary = [
+  { clauseId: '5.1-1', chapter: '5.1', title: '默认账户强制修改密码', level: 'L1', defaultSeverity: 'high' },
+  { clauseId: '5.1-2', chapter: '5.1', title: '口令策略（复杂度/长度/过期）', level: 'L2', defaultSeverity: 'middle' },
+  { clauseId: '5.1-3', chapter: '5.1', title: '登录失败次数锁定', level: 'L2', defaultSeverity: 'middle' },
+  { clauseId: '5.2-1', chapter: '5.2', title: '权限分离（管理员/普通用户）', level: 'L2', defaultSeverity: 'middle' },
+  { clauseId: '5.3-1', chapter: '5.3', title: '不必要网络服务必须禁用', level: 'L1', defaultSeverity: 'middle' },
+  { clauseId: '5.3-2', chapter: '5.3', title: '明文管理协议不得开放（Telnet/HTTP）', level: 'L1', defaultSeverity: 'high' },
+  { clauseId: '5.3-3', chapter: '5.3', title: '必须使用加密管理协议（SSH/HTTPS）', level: 'L1', defaultSeverity: 'middle' },
+  { clauseId: '5.3-4', chapter: '5.3', title: '默认口令必须修改', level: 'L1', defaultSeverity: 'high' },
+  { clauseId: '5.3-5', chapter: '5.3', title: 'UPnP/SSDP/MDNS 不得对外网暴露', level: 'L2', defaultSeverity: 'middle' },
+  { clauseId: '5.4-1', chapter: '5.4', title: '加密套件不得使用已知弱算法', level: 'L2', defaultSeverity: 'high' },
+  { clauseId: '5.4-2', chapter: '5.4', title: 'TLS 证书合法有效且正确配置', level: 'L2', defaultSeverity: 'middle' },
+  { clauseId: '5.4-3', chapter: '5.4', title: '固件升级必须完整性校验+签名', level: 'L3', defaultSeverity: 'high' },
+  { clauseId: '5.5-1', chapter: '5.5', title: '固件中不得存在硬编码密钥/凭据', level: 'L2', defaultSeverity: 'high' },
+  { clauseId: '5.5-2', chapter: '5.5', title: '固件必须有防逆向读取保护', level: 'L3', defaultSeverity: 'middle' },
+  { clauseId: '5.5-3', chapter: '5.5', title: '调试接口 JTAG/UART 默认关闭', level: 'L2', defaultSeverity: 'high' }
+];
+
+// v7 新增：项目侧 Tab 当前选中项
+let projActiveTab = 'vars';  // vars=目标变量+工具, flow=编排进度, term=终端, log=日志, report=报告
+
+// 状态
+let currentView = 'lib';
+let libFilter = 'all';  // all / module / custom
+let libCatId = 'all';
+let libSearch = '';
+let tplCurrent = tplTemplates[0];
+let tplSelToolId = 'nmap';     // 模板中当前选中的引用工具
+let tplEditingId = null;
+let tplCmdLocalSeq = 10000;
+let currentTool = tools.nmap;
+let currentProject = projects[0];
+let filteredTools = Object.values(tools);
+
+// 引用弹层临时选择
+let refModalSearch = '';
+let refSelections = new Set(tplCurrent.refToolIds);  // 勾选集合
+
+// ==================== 视图切换 ====================
+function switchView(view) {
+  currentView = view;
+  ['Lib','Tpl','Proj'].forEach(k => {
+    const v = document.getElementById('view' + k);
+    const b = document.getElementById('btn' + k);
+    const on = k.toLowerCase() === view;
+    v.classList.toggle('view-visible', on);
+    v.classList.toggle('view-hidden', !on);
+    b.classList.toggle('tab-active', on);
+    b.classList.toggle('tab-inactive', !on);
+  });
+  if (view === 'lib') renderLibAll();
+  if (view === 'tpl') renderTplAll();
+  if (view === 'proj') renderProjAll();
+}
+
+// ==================== 工具库渲染 ====================
+function renderLibAll() {
+  renderLibCatList();
+  renderLibStats();
+  renderLibToolGrid();
+}
+
+function renderLibCatList() {
+  const list = document.getElementById('libCategoryList');
+  list.innerHTML = libCategories.map(c => `
+    <div onclick="selectLibCat('${c.id}')" class="px-3 py-2 rounded-md cursor-pointer mb-1 flex items-center gap-2 text-sm ${c.active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'hover:bg-gray-50 text-gray-700'}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+      <span class="flex-1 truncate">${c.name}</span>
+      <span class="text-xs text-gray-400">${c.count}</span>
+    </div>
+  `).join('');
+}
+function selectLibCat(id) {
+  libCategories.forEach(c => c.active = c.id === id);
+  libCatId = id;
+  renderLibCatList();
+  renderLibToolGrid();
+}
+
+function renderLibStats() {
+  const all = Object.values(tools);
+  document.getElementById('statTotal').textContent = all.length;
+  document.getElementById('statModule').textContent = all.filter(t => t.type === 'module').length;
+  document.getElementById('statCustom').textContent = all.filter(t => t.type === 'custom').length;
+  document.getElementById('statTplRef').textContent = tplTemplates.reduce((s, t) => s + t.refToolIds.length, 0);
+}
+
+function getLibFiltered() {
+  return Object.values(tools).filter(t => {
+    if (libFilter === 'module' && t.type !== 'module') return false;
+    if (libFilter === 'custom' && t.type !== 'custom') return false;
+    if (libCatId !== 'all' && t.category !== libCatId) return false;
+    if (libSearch) {
+      const k = libSearch.toLowerCase();
+      if (!t.name.toLowerCase().includes(k) && !t.desc.toLowerCase().includes(k) && !(t.caps||[]).join(' ').toLowerCase().includes(k)) return false;
+    }
+    return true;
+  });
+}
+
+function setLibFilter(f) {
+  libFilter = f;
+  ['All','Module','Custom'].forEach(k => {
+    const el = document.getElementById('libF' + k);
+    const on = k.toLowerCase() === f;
+    el.className = 'px-3 py-1 text-xs rounded ' + (on ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-500 hover:bg-gray-50');
+  });
+  renderLibToolGrid();
+}
+
+function filterLibTools(v) { libSearch = v; renderLibToolGrid(); }
+
+function renderLibToolGrid() {
+  const grid = document.getElementById('libToolGrid');
+  const list = getLibFiltered();
+  if (list.length === 0) {
+    grid.innerHTML = '<div class="col-span-3 text-center text-gray-400 text-sm py-10">没有符合条件的工具</div>';
+    return;
+  }
+  grid.innerHTML = list.map(t => {
+    const isModule = t.type === 'module';
+    return `
+      <div class="tool-lib-card bg-white rounded-xl border border-gray-200 p-4">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-lg flex items-center justify-center font-bold text-base ${isModule ? 'bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-700'}">${t.icon}</div>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-semibold text-gray-800">${t.name}</span>
+                <span class="text-xs text-gray-400">${t.version}</span>
+              </div>
+              <div class="mt-0.5 flex flex-wrap items-center gap-1">
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isModule ? 'badge-module' : 'badge-custom'}">
+                  ${isModule ? '内置模组' : '自定义'}
+                </span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full ${t.interactionMode === 'form' ? 'badge-form-mode' : 'badge-cmd-mode'}" title="${t.interactionMode === 'form' ? '表单交互型：用户选功能填参数，模组自动执行，终端仅显示结果' : '命令行型：用户复制/注入命令到终端执行'}">
+                  ${t.interactionMode === 'form' ? '表单交互' : '命令行'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button onclick="editToolInLib('${t.id}')" class="text-gray-300 hover:text-indigo-600">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </button>
+        </div>
+        <div class="text-xs text-gray-600 leading-relaxed mb-3 h-10 overflow-hidden">${t.shortDesc}</div>
+        ${isModule && t.caps.length ? `
+          <div class="mb-3">
+            <div class="flex flex-wrap gap-1">
+              ${t.caps.map(c => `<span class="cap-tag bg-purple-50 text-purple-600 border border-purple-100">${c}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        <div class="flex items-center justify-between pt-3 border-t border-gray-100">
+          <div class="text-xs text-gray-400">被 <span class="text-gray-600 font-medium">${t.refCount}</span> 个模板引用</div>
+          <button onclick="editToolInLib('${t.id}')" class="text-xs px-2.5 py-1 border border-gray-200 rounded-md hover:border-indigo-300 hover:text-indigo-600 text-gray-500">查看详情</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function scanDirForTools() { alert('[原型] 扫描工具目录并导入到全局工具库...'); }
+function openAddCustomTool() { alert('[原型] 打开注册自定义工具表单...'); }
+function editToolInLib(id) { alert('[原型] 打开工具详情编辑: ' + id + '（内置模组仅可查看说明，自定义可完全修改）'); }
+
+// ==================== 模板管理渲染 ====================
+function renderTplAll() {
+  renderTplList();
+  renderTplRefGrid();
+  renderTplCmdPanel();
+}
+
+function renderTplList() {
+  const list = document.getElementById('tplList');
+  list.innerHTML = tplTemplates.map(t => `
+    <div onclick="selectTpl(${t.id})" class="px-3 py-2 rounded-md cursor-pointer mb-1 flex items-center gap-2 text-sm ${t.active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'hover:bg-gray-50 text-gray-700'}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h6"/></svg>
+      <span class="flex-1 truncate">${t.name}</span>
+      <span class="text-xs text-gray-400">${t.refToolIds.length}</span>
+    </div>
+  `).join('');
+}
+
+function selectTpl(id) {
+  tplTemplates.forEach(t => t.active = t.id === id);
+  tplCurrent = tplTemplates.find(t => t.id === id);
+  if (!tplCurrent.refToolIds.includes(tplSelToolId)) {
+    tplSelToolId = tplCurrent.refToolIds[0] || null;
+  }
+  refSelections = new Set(tplCurrent.refToolIds);
+  renderTplAll();
+}
+
+function renderTplRefGrid() {
+  const grid = document.getElementById('tplRefGrid');
+  document.getElementById('tplRefCount').textContent = `已引用 ${tplCurrent.refToolIds.length} / 可用 ${Object.keys(tools).length}`;
+  
+  if (tplCurrent.refToolIds.length === 0) {
+    grid.innerHTML = `<div class="col-span-4 border-2 border-dashed border-gray-200 rounded-lg p-6 text-center text-sm text-gray-400">还未引用任何工具，点击右上角「从工具库添加」</div>`;
+    return;
+  }
+  
+  grid.innerHTML = tplCurrent.refToolIds.map(tid => {
+    const t = tools[tid];
+    if (!t) return '';
+    const selected = tplSelToolId === tid;
+    const isModule = t.type === 'module';
+    return `
+      <div onclick="selectTplTool('${tid}')" class="border rounded-lg p-3 cursor-pointer transition relative ${selected ? 'border-indigo-500 bg-indigo-50 border-2' : 'border-gray-200 hover:border-indigo-300'}">
+        ${selected ? '<div class="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500"></div>' : ''}
+        <div class="flex items-center gap-2 mb-1.5">
+          <div class="w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm ${isModule ? 'bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-700'}">${t.icon}</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-mono font-medium text-gray-800 truncate">${t.name}</div>
+            <div class="text-[10px] flex flex-wrap items-center gap-1">
+              <span class="px-1.5 py-0.5 rounded-full ${isModule ? 'badge-module' : 'badge-custom'}">
+                ${isModule ? '内置模组' : '自定义'}
+              </span>
+              <span class="px-1.5 py-0.5 rounded-full ${t.interactionMode === 'form' ? 'badge-form-mode' : 'badge-cmd-mode'}">
+                ${t.interactionMode === 'form' ? '表单交互' : '命令行'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 truncate">${t.shortDesc}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectTplTool(id) {
+  tplSelToolId = id;
+  tplEditingId = null;
+  renderTplRefGrid();
+  renderTplCmdPanel();
+}
+
+function renderTplCmdPanel() {
+  const tag = document.getElementById('tplSelToolTag');
+  const typeBadge = document.getElementById('tplSelToolTypeBadge');
+  const t = tools[tplSelToolId];
+  
+  if (!t) {
+    tag.textContent = '-';
+    document.getElementById('tplCmdList2').innerHTML = '';
+    return;
+  }
+  tag.textContent = t.name;
+  if (t.type === 'module') {
+    typeBadge.className = 'px-2 py-0.5 text-xs rounded-full badge-module';
+    typeBadge.textContent = '内置模组';
+  } else {
+    typeBadge.className = 'px-2 py-0.5 text-xs rounded-full badge-custom';
+    typeBadge.textContent = '自定义';
+  }
+  // 交互模式徽章
+  const modeBadge = document.getElementById('tplSelToolModeBadge');
+  const isForm = t.interactionMode === 'form';
+  modeBadge.className = 'px-2 py-0.5 text-xs rounded-full ' + (isForm ? 'badge-form-mode' : 'badge-cmd-mode');
+  modeBadge.textContent = isForm ? '表单交互' : '命令行';
+  modeBadge.title = isForm
+    ? '表单交互型模组：项目侧以参数表单一键执行，命令由模组内部构建，此处仅作只读参考'
+    : '命令行型：项目侧复制/注入命令到终端执行';
+  // 表单交互型模组命令区提示
+  document.getElementById('tplFormModeHint').classList.toggle('hidden', !isForm);
+  document.getElementById('tplToolIcon').textContent = t.icon;
+  document.getElementById('tplToolName').textContent = t.name;
+  document.getElementById('tplToolVersion').textContent = t.version;
+  document.getElementById('tplToolShortDesc').textContent = t.shortDesc;
+  document.getElementById('tplToolPath').textContent = t.path;
+  document.getElementById('tplToolRefCount').textContent = t.refCount + ' 个模板';
+  
+  // 高级能力
+  const capsBox = document.getElementById('tplModuleCaps');
+  const capsList = document.getElementById('tplModuleCapsList');
+  if (t.type === 'module' && t.caps && t.caps.length) {
+    capsBox.classList.remove('hidden');
+    capsList.innerHTML = t.caps.map(c => `<span class="cap-tag bg-purple-50 text-purple-600 border border-purple-100">${c}</span>`).join('');
+  } else {
+    capsBox.classList.add('hidden');
+  }
+  
+  // 命令列表
+  const list = document.getElementById('tplCmdList2');
+  list.innerHTML = t.commands.map(cmd => {
+    const isEditing = tplEditingId === cmd.id;
+    const escapedText = escapeHtml(cmd.text).replace(/&lt;[^&]+&gt;/g, m => `<span class="text-gray-400 italic">${m}</span>`);
+    const localBadge = cmd.fromLocal ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 ml-1">本地</span>` : '';
+    
+    if (isEditing) {
+      return `
+        <div class="border border-indigo-400 bg-indigo-50 rounded-lg p-3">
+          <div class="flex flex-col gap-2">
+            <input class="px-2 py-1 border border-indigo-300 rounded text-sm font-mono" value="${escapeHtml(cmd.text)}" onchange="updateTplCmdText2(${cmd.id}, this.value)">
+            <input class="px-2 py-1 border border-gray-300 rounded text-xs" value="${escapeHtml(cmd.desc)}" onchange="updateTplCmdDesc2(${cmd.id}, this.value)">
+            <div class="flex gap-2">
+              <button onclick="saveTplCmd2(${cmd.id})" class="px-3 py-1 text-xs bg-indigo-600 text-white rounded">保存</button>
+              <button onclick="cancelTplCmd2()" class="px-3 py-1 text-xs border border-gray-300 rounded">取消</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="border border-gray-200 rounded-lg p-3 hover:border-gray-300 group">
+        <div class="flex items-center gap-3">
+          <div onclick="toggleTplCmd2(${cmd.id})" class="ref-checkbox ${cmd.checked ? 'checked' : ''}"></div>
+          <div class="flex-1 min-w-0">
+            <div class="font-mono text-sm ${cmd.checked ? 'text-indigo-600' : 'text-gray-800'}">${escapedText}${localBadge}</div>
+            <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(cmd.desc)}</div>
+          </div>
+          <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+            <button onclick="editTplCmd2(${cmd.id})" class="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-indigo-600">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+            <button onclick="deleteTplCmd2(${cmd.id})" class="w-6 h-6 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-red-600">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleTplCmd2(id) {
+  const t = tools[tplSelToolId];
+  const c = t.commands.find(c => c.id === id);
+  if (c) { c.checked = !c.checked; renderTplCmdPanel(); }
+}
+function editTplCmd2(id) { tplEditingId = id; renderTplCmdPanel(); }
+function cancelTplCmd2() { tplEditingId = null; renderTplCmdPanel(); }
+function updateTplCmdText2(id, val) { const c = tools[tplSelToolId].commands.find(c => c.id === id); if (c) c.text = val; }
+function updateTplCmdDesc2(id, val) { const c = tools[tplSelToolId].commands.find(c => c.id === id); if (c) c.desc = val; }
+function saveTplCmd2(id) {
+  const c = tools[tplSelToolId].commands.find(c => c.id === id);
+  if (!c || !c.text.trim()) return;
+  tplEditingId = null; renderTplCmdPanel();
+}
+function deleteTplCmd2(id) {
+  const t = tools[tplSelToolId];
+  if (!t) return;
+  const c = t.commands.find(c => c.id === id);
+  if (c && c.fromLocal !== true) {
+    if (!confirm('该命令来自工具库，删除会影响引用此工具的其他模板吗？\n（原型中仅作本地删除演示）')) return;
+  }
+  t.commands = t.commands.filter(c => c.id !== id);
+  renderTplCmdPanel();
+}
+function addTplLocalCmd() {
+  const t = tools[tplSelToolId];
+  if (!t) return;
+  const nc = { id: ++tplCmdLocalSeq, text: '', desc: '', checked: true, fromLocal: true };
+  t.commands.push(nc);
+  tplEditingId = nc.id;
+  renderTplCmdPanel();
+}
+
+// 从工具库引用工具弹层
+function openToolRefModal() {
+  refSelections = new Set(tplCurrent.refToolIds);
+  refModalSearch = '';
+  renderRefModalList();
+  document.getElementById('toolRefModal').classList.remove('hidden');
+}
+function closeToolRefModal() { document.getElementById('toolRefModal').classList.add('hidden'); }
+function filterRefTools(v) { refModalSearch = v; renderRefModalList(); }
+function getRefFiltered() {
+  return Object.values(tools).filter(t => {
+    if (!refModalSearch) return true;
+    const k = refModalSearch.toLowerCase();
+    return t.name.toLowerCase().includes(k) || t.shortDesc.toLowerCase().includes(k);
+  });
+}
+function renderRefModalList() {
+  const list = document.getElementById('refModalList');
+  const arr = getRefFiltered();
+  document.getElementById('refSelCount').textContent = refSelections.size;
+  list.innerHTML = arr.map(t => {
+    const checked = refSelections.has(t.id);
+    const isModule = t.type === 'module';
+    const isFromLib = true;
+    return `
+      <div onclick="toggleRefSel('${t.id}')" class="p-3 rounded-lg cursor-pointer mb-1.5 border transition ${checked ? 'tool-item-selected' : 'border-gray-100 hover:bg-gray-50'}">
+        <div class="flex items-center gap-3">
+          <div class="ref-checkbox ${checked ? 'checked' : ''}" onclick="event.stopPropagation(); toggleRefSel('${t.id}')"></div>
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm ${isModule ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}">${t.icon}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-sm font-medium text-gray-800">${t.name}</span>
+              <span class="text-xs text-gray-400">${t.version}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isModule ? 'badge-module' : 'badge-custom'}">
+                ${isModule ? '内置模组' : '自定义'}
+              </span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${t.interactionMode === 'form' ? 'badge-form-mode' : 'badge-cmd-mode'}" title="${t.interactionMode === 'form' ? '表单交互型：选功能填参数一键执行，终端仅显示结果' : '命令行型：复制/注入命令到终端执行'}">
+                ${t.interactionMode === 'form' ? '表单交互' : '命令行'}
+              </span>
+            </div>
+            <div class="text-xs text-gray-500 truncate mt-0.5">${t.shortDesc}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+function toggleRefSel(id) {
+  if (refSelections.has(id)) refSelections.delete(id);
+  else refSelections.add(id);
+  renderRefModalList();
+}
+function saveRefSelections() {
+  tplCurrent.refToolIds = Array.from(refSelections);
+  if (!tplCurrent.refToolIds.includes(tplSelToolId)) {
+    tplSelToolId = tplCurrent.refToolIds[0] || null;
+  }
+  renderTplAll();
+  closeToolRefModal();
+}
+
+// ==================== 项目管理 ====================
+function renderProjAll() {
+  renderProjList();
+  renderTool();
+  renderProjToolTypeBadge();
+}
+function renderProjList() {
+  const list = document.getElementById('projList');
+  list.innerHTML = projects.map(p => `
+    <div onclick="selectProject(${p.id})" class="px-3 py-2 rounded-md cursor-pointer mb-1 flex items-center gap-2 text-sm ${p.active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'hover:bg-gray-50 text-gray-700'}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+      <span class="flex-1 truncate">${p.name}</span>
+    </div>
+  `).join('');
+}
+function selectProject(id) {
+  projects.forEach(p => p.active = p.id === id);
+  currentProject = projects.find(p => p.id === id);
+  renderProjList();
+  document.getElementById('projName').textContent = currentProject.name;
+  document.getElementById('projTpl').textContent = '模板: ' + currentProject.template;
+  addLog('ok', `切换到项目: ${currentProject.name}`);
+}
+
+function getProjectTools() {
+  const tpl = tplTemplates.find(t => t.name === currentProject.template);
+  const ids = tpl ? tpl.refToolIds : [];
+  return ids.map(id => tools[id]).filter(Boolean);
+}
+
+function renderProjToolTypeBadge() {
+  const el = document.getElementById('projToolTypeBadge');
+  const modeEl = document.getElementById('projToolModeBadge');
+  if (!currentTool) return;
+  if (currentTool.type === 'module') {
+    el.className = 'px-2 py-0.5 text-xs rounded-full badge-module';
+    el.textContent = '内置模组';
+  } else {
+    el.className = 'px-2 py-0.5 text-xs rounded-full badge-custom';
+    el.textContent = '自定义工具';
+  }
+  // 交互模式徽章：表单交互型模组无需用户输入命令，终端仅作结果输出区
+  const isForm = currentTool.interactionMode === 'form';
+  modeEl.className = 'px-2 py-0.5 text-xs rounded-full ' + (isForm ? 'badge-form-mode' : 'badge-cmd-mode');
+  modeEl.textContent = isForm ? '表单交互' : '命令行';
+  modeEl.title = isForm
+    ? '表单交互型：选功能填参数后一键执行，模组自动运行，下方终端仅显示运行结果'
+    : '命令行型：复制或注入命令到下方终端执行';
+}
+
+function renderTool() {
+  document.getElementById('toolIcon').textContent = currentTool.icon;
+  document.getElementById('toolName').textContent = currentTool.name;
+  document.getElementById('toolVersion').textContent = currentTool.version;
+  document.getElementById('toolDesc').textContent = currentTool.shortDesc;
+  document.getElementById('toolSource').textContent = currentTool.source;
+  document.getElementById('toolPath').textContent = currentTool.path;
+
+  const area = document.getElementById('toolContentArea');
+  const isForm = currentTool.interactionMode === 'form';
+
+  // 根据交互模式切换终端区标题与输入行
+  updateTerminalMode(isForm);
+
+  if (isForm) {
+    area.innerHTML = renderToolForm();
+  } else {
+    area.innerHTML = renderToolCommands();
+  }
+}
+
+// ---- 命令行模式：预设命令卡片 ----
+function renderToolCommands() {
+  const checkedCmds = currentTool.commands.filter(c => c.checked);
+  if (checkedCmds.length === 0) {
+    return `
+      <div class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">预设命令</div>
+      <div class="text-center text-gray-400 text-sm py-4">暂无启用的命令</div>
+    `;
+  }
+  const cards = checkedCmds.map(cmd => {
+    const escapedText = escapeHtml(cmd.text).replace(/&lt;[^&]+&gt;/g, m => `<span class="text-gray-400 italic">${m}</span>`);
+    return `
+      <div class="cmd-card border border-gray-200 rounded-lg p-3 bg-white hover:border-indigo-300">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="mb-1">
+              <code class="text-sm font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${escapedText}</code>
+            </div>
+            <p class="text-xs text-gray-500 leading-relaxed">${escapeHtml(cmd.desc)}</p>
+          </div>
+          <div class="flex gap-1 flex-shrink-0">
+            <button onclick="copyCommand('${escapeHtml(cmd.text)}')" class="w-7 h-7 rounded border border-gray-200 hover:bg-gray-50 flex items-center justify-center text-gray-500 hover:text-indigo-600" title="复制命令">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+            <button onclick="injectToTerminal('${escapeHtml(cmd.text)}')" class="w-7 h-7 rounded bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center text-white" title="注入到命令行">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide flex items-center justify-between">
+      <span>预设命令</span>
+      <span class="text-gray-400 font-normal">点击命令可复制或注入终端</span>
+    </div>
+    <div class="space-y-2 max-h-64 overflow-y-auto custom-scroll pr-1">${cards}</div>
+  `;
+}
+
+// ---- 表单交互模式：参数表单 + 一键执行 ----
+function renderToolForm() {
+  const t = currentTool;
+  const fields = t.formFields || [];
+  const fieldsHtml = fields.map(f => {
+    if (f.type === 'select') {
+      return `
+        <div class="flex items-center gap-3">
+          <label class="text-xs text-gray-500 w-24 flex-shrink-0">${f.label}</label>
+          <select id="formfield_${f.id}" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-indigo-400">
+            ${f.options.map(o => `<option ${o===f.value?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>`;
+    }
+    if (f.type === 'checkbox') {
+      return `
+        <div class="flex items-center gap-3">
+          <label class="text-xs text-gray-500 w-24 flex-shrink-0">${f.label}</label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="formfield_${f.id}" ${f.value?'checked':''} class="w-4 h-4 rounded">
+            <span class="text-xs text-gray-400">启用</span>
+          </label>
+        </div>`;
+    }
+    return `
+      <div class="flex items-center gap-3">
+        <label class="text-xs text-gray-500 w-24 flex-shrink-0">${f.label}${f.required?'<span class="text-red-500">*</span>':''}</label>
+        <input type="text" id="formfield_${f.id}" value="${escapeHtml(f.value||'')}" placeholder="${f.placeholder||''}" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:border-indigo-400">
+      </div>`;
+  }).join('');
+
+  const cmdRef = t.commands.filter(c=>c.checked).map(c => escapeHtml(c.text)).join('  ||  ') || '（无）';
+
+  return `
+    <div class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide flex items-center justify-between">
+      <span>参数配置</span>
+      <span class="px-2 py-0.5 text-[10px] rounded-full badge-module">表单交互型模组</span>
+    </div>
+    <div class="border border-purple-200 bg-gradient-to-br from-purple-50/30 to-indigo-50/20 rounded-lg p-4">
+      <div class="flex items-center gap-2 mb-3 pb-2 border-b border-purple-100">
+        <svg class="w-4 h-4 text-purple-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <span class="text-xs text-purple-700">填写参数后一键执行，模组自动处理命令构建、运行与结果解析，无需手动输入命令</span>
+      </div>
+      <div class="space-y-3">${fieldsHtml}</div>
+      <div class="flex items-center gap-2 mt-4 pt-3 border-t border-purple-100">
+        <button onclick="executeFormTool()" class="px-4 py-1.5 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          开始执行
+        </button>
+        <span class="text-xs text-gray-400">结果将显示在下方输出区，并自动写入日志</span>
+      </div>
+    </div>
+    <div class="mt-3">
+      <div class="text-xs text-gray-400 mb-1">底层命令参考（只读）</div>
+      <div class="bg-gray-50 border border-gray-100 rounded px-3 py-2 font-mono text-xs text-gray-500">${cmdRef}</div>
+    </div>
+  `;
+}
+
+// ---- 根据交互模式切换终端区 ----
+function updateTerminalMode(isForm) {
+  const title = document.getElementById('termTitle');
+  const inputRow = document.getElementById('termInputRow');
+  const banner = document.getElementById('termOutputBanner');
+  if (isForm) {
+    title.textContent = '执行输出（' + currentTool.name + ' 模组运行结果）';
+    inputRow.classList.add('hidden');
+    banner.classList.remove('hidden');
+  } else {
+    title.textContent = '实时命令行 - powershell.exe';
+    inputRow.classList.remove('hidden');
+    banner.classList.add('hidden');
+  }
+}
+
+// ---- 表单模组执行 ----
+function executeFormTool() {
+  const t = currentTool;
+  const fields = t.formFields || [];
+  const params = {};
+  fields.forEach(f => {
+    const el = document.getElementById('formfield_' + f.id);
+    params[f.id] = (f.type === 'checkbox') ? el.checked : el.value;
+  });
+  for (const f of fields) {
+    if (f.required && !params[f.id]) { alert('请填写必填项: ' + f.label); return; }
+  }
+  const output = document.getElementById('terminalOutput');
+  const paramStr = Object.entries(params).map(([k,v]) => k+'='+v).join(', ');
+  output.innerHTML += `<div class="text-purple-400">▶ [${escapeHtml(t.name)}] 开始执行合规检查…</div>`;
+  output.innerHTML += `<div class="text-gray-500">参数: ${escapeHtml(paramStr)}</div>`;
+  output.scrollTop = output.scrollHeight;
+  setTimeout(() => {
+    const result = simulateFormResult(t, params);
+    output.innerHTML += result.html;
+    output.scrollTop = output.scrollHeight;
+    addLog(result.success ? 'ok' : 'fail', `[模组] ${t.name} (${paramStr})`, result.summary);
+  }, 800);
+}
+
+function simulateFormResult(tool, params) {
+  if (tool.id === 'en18031-port-check') {
+    return {
+      success: true,
+      summary: 'Level 2 · 发现 1 项不符合（端口 23/Telnet 不允许开放）',
+      html: `<div class="text-green-400">[EN18031 端口合规检查] 完成</div>
+<div class="text-gray-300">目标: ${escapeHtml(params.target)} · 等级: ${escapeHtml(params.level||'Level 2')}</div>
+<div class="text-gray-500">─────────────────────────────────</div>
+<div class="text-gray-300">端口      状态   服务      合规判定</div>
+<div class="text-gray-300">22/tcp    open   ssh       ✓ 允许</div>
+<div class="text-red-400">23/tcp    open   telnet    ✗ 不允许 (EN18031 5.3-2)</div>
+<div class="text-gray-300">80/tcp    open   http      ✓ 允许</div>
+<div class="text-gray-300">443/tcp   open   https     ✓ 允许</div>
+<div class="text-gray-500">─────────────────────────────────</div>
+<div class="text-yellow-400">结论: 不合规（1 项不符合）</div>
+<div class="text-gray-500">报告已生成: D:\\proj\\reports\\port-check.html</div>`
+    };
+  }
+  if (tool.id === 'en18031-crypto-check') {
+    return {
+      success: true,
+      summary: 'TLS 检查完成 · TLS 1.0 未禁用，不符合标准要求',
+      html: `<div class="text-green-400">[EN18031 加密合规检查] 完成</div>
+<div class="text-gray-300">目标: ${escapeHtml(params.target)}</div>
+<div class="text-gray-500">─────────────────────────────────</div>
+<div class="text-gray-300">TLS 版本    支持   合规判定</div>
+<div class="text-red-400">TLS 1.0     是     ✗ 不允许</div>
+<div class="text-gray-300">TLS 1.2     是     ✓ 允许</div>
+<div class="text-gray-300">TLS 1.3     是     ✓ 允许</div>
+<div class="text-gray-500">─────────────────────────────────</div>
+<div class="text-yellow-400">结论: 不合规（TLS 1.0 未禁用）</div>
+<div class="text-gray-500">报告已生成: D:\\proj\\reports\\crypto-check.html</div>`
+    };
+  }
+  return { success: true, summary: '执行完成', html: '<div class="text-green-400">[模组] 执行完成</div>' };
+}
+
+// 工具选择弹窗（项目中）
+function openToolSelector() {
+  filteredTools = getProjectTools();
+  renderModalToolList();
+  document.getElementById('toolSelectorModal').classList.remove('hidden');
+}
+function closeToolSelector() { document.getElementById('toolSelectorModal').classList.add('hidden'); }
+function filterTools(keyword) {
+  keyword = keyword.toLowerCase();
+  const base = getProjectTools();
+  filteredTools = base.filter(t => t.name.toLowerCase().includes(keyword) || t.shortDesc.toLowerCase().includes(keyword));
+  renderModalToolList();
+}
+function renderModalToolList() {
+  const list = document.getElementById('modalToolList');
+  if (filteredTools.length === 0) {
+    list.innerHTML = '<div class="text-center text-gray-400 text-sm py-8">未找到匹配的工具</div>';
+    return;
+  }
+  list.innerHTML = filteredTools.map(t => {
+    const selected = t.id === currentTool.id;
+    const isModule = t.type === 'module';
+    return `
+      <div onclick="selectTool('${t.id}')" class="p-3 rounded-lg cursor-pointer mb-1.5 border transition ${selected ? 'tool-item-selected border-indigo-300' : 'border-gray-100 hover:bg-gray-50'}">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm ${selected ? 'bg-indigo-100 text-indigo-700' : isModule ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600'}">${t.icon}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-sm font-medium text-gray-800">${t.name}</span>
+              <span class="text-xs text-gray-400">${t.version}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isModule ? 'badge-module' : 'badge-custom'}">
+                ${isModule ? '内置模组' : '自定义'}
+              </span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${t.interactionMode === 'form' ? 'badge-form-mode' : 'badge-cmd-mode'}" title="${t.interactionMode === 'form' ? '表单交互型：选功能填参数一键执行，终端仅显示结果' : '命令行型：复制/注入命令到终端执行'}">
+                ${t.interactionMode === 'form' ? '表单交互' : '命令行'}
+              </span>
+            </div>
+            <div class="text-xs text-gray-500 truncate mt-0.5">${t.shortDesc}</div>
+          </div>
+          ${selected ? '<svg class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+function selectTool(toolId) {
+  const t = tools[toolId];
+  if (!t) return;
+  currentTool = t;
+  renderTool();
+  renderProjToolTypeBadge();
+  closeToolSelector();
+  addLog('ok', `切换到工具: ${currentTool.name}`);
+}
+
+// ==================== 命令交互 & 终端 ====================
+function copyCommand(cmdText) {
+  navigator.clipboard.writeText(cmdText).then(() => {
+    showToast('命令已复制到剪贴板');
+    addLog('ok', `复制命令: ${cmdText}`);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = cmdText;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('命令已复制到剪贴板');
+  });
+}
+function injectToTerminal(cmdText) {
+  const input = document.getElementById('terminalInput');
+  input.value = cmdText;
+  input.focus();
+  const angleIdx = cmdText.indexOf('<');
+  if (angleIdx !== -1) input.setSelectionRange(angleIdx, cmdText.length);
+  addLog('run', `注入命令到终端: ${cmdText}`);
+  input.classList.add('ring-2', 'ring-indigo-400');
+  setTimeout(() => input.classList.remove('ring-2', 'ring-indigo-400'), 300);
+}
+function showToast(msg) {
+  const toast = document.getElementById('copyToast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+}
+function handleTerminalInput(e) { if (e.key === 'Enter') executeTerminalCmd(); }
+function executeTerminalCmd() {
+  const input = document.getElementById('terminalInput');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  const output = document.getElementById('terminalOutput');
+  output.innerHTML += `<div><span class="text-green-500">PS D:\\proj></span> <span class="text-yellow-300">${escapeHtml(cmd)}</span></div>`;
+  setTimeout(() => {
+    const result = simulateCommandResult(cmd);
+    output.innerHTML += `<div class="${result.success ? 'text-green-400' : 'text-red-400'}">${result.output}</div>`;
+    output.scrollTop = output.scrollHeight;
+    addLog(result.success ? 'ok' : 'fail', cmd, result.output);
+  }, 500);
+  input.value = '';
+  output.scrollTop = output.scrollHeight;
+}
+function simulateCommandResult(cmd) {
+  if (/^\s*(clear|cls)\s*$/i.test(cmd)) return { success: false, output: '[已拦截] 日志受保护，不可清除。终端显示已锁定。' };
+  if (cmd.startsWith('nmap')) return { success: true, output: `Starting Nmap ${currentTool.version}\nNmap scan report for 192.168.1.20 (IPC-X1)\nHost is up (0.0050s latency).\nPORT     STATE  SERVICE    VERSION\n22/tcp   open   ssh        OpenSSH 8.2p1\n80/tcp   open   http       nginx 1.18.0\nNmap done: 1 IP address scanned in 3.12s\n[✓] exit code 0` };
+  return { success: true, output: `[执行成功] 命令 "${cmd}" 已执行\n退出码: 0\n耗时: 1.2s` };
+}
+function clearTerminal() { document.getElementById('terminalOutput').innerHTML = ''; }
+
+// ==================== 日志 ====================
+function addLog(status, cmd, detail) {
+  const list = document.getElementById('logList');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const statusMap = {
+    ok: { label: '成功', color: 'text-green-600', dot: 'bg-green-500', border: 'border-green-200' },
+    fail: { label: '失败', color: 'text-red-600', dot: 'bg-red-500', border: 'border-red-200' },
+    run: { label: '执行中', color: 'text-indigo-600', dot: 'bg-indigo-500', border: 'border-indigo-200' },
+    blocked: { label: '已拦截', color: 'text-amber-600', dot: 'bg-amber-500', border: 'border-amber-200' }
+  };
+  const s = statusMap[status] || statusMap.ok;
+  const entry = document.createElement('div');
+  entry.className = `border-l-2 ${s.border.split(' ')[1]} rounded-r-md px-3 py-2 bg-white hover:shadow-sm`;
+  entry.innerHTML = `
+    <div class="flex items-center justify-between mb-1">
+      <div class="flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>
+        <span class="text-xs font-medium ${s.color}">${s.label}</span>
+      </div>
+      <span class="text-xs text-gray-400 font-mono">${time}</span>
+    </div>
+    <div class="text-xs font-mono text-gray-800 break-all mb-1"><span class="text-indigo-500">PS></span> ${escapeHtml(cmd)}</div>
+    ${detail ? `<div class="text-xs text-gray-500 break-all">${escapeHtml(detail)}</div>` : ''}
+  `;
+  list.insertBefore(entry, list.firstChild);
+}
+
+function toggleProjectInfo() { document.getElementById('projectInfoPanel').classList.toggle('hidden'); }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ===== v7 项目页 5-Tab 切换（修复缺失实现，避免 JS 报错） =====
+function switchProjTab(tab) {
+  window.projActiveTab = tab;
+  const btnMap = {
+    vars: 'projTabVars',
+    flow: 'projTabFlow',
+    term: 'projTabTerm',
+    log:  'projTabLog',
+    report: 'projTabReport',
+  };
+  const panelMap = {
+    vars: 'projPanelVars',
+    flow: 'projPanelFlow',
+    term: 'projPanelTerm',
+    log:  'projPanelLog',
+    report: 'projPanelReport',
+  };
+  // 按钮状态
+  for (const [k, id] of Object.entries(btnMap)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (k === tab) el.classList.add('active');
+    else el.classList.remove('active');
+  }
+  // 面板显示隐藏：与侧栏 view-hidden 风格保持一致
+  for (const [k, id] of Object.entries(panelMap)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (k === tab) el.classList.remove('view-hidden');
+    else el.classList.add('view-hidden');
+  }
+}
+
+// ===== v7 增强：用户头像下拉开关 + 全局点击关闭 =====
+function toggleUserDropdown(e) {
+  if (e) e.stopPropagation();
+  const d = document.getElementById('userDropdown');
+  if (d) d.classList.toggle('open');
+}
+// 点击页面任意非下拉区域 → 关闭
+function closeUserDropdownOnOutside(e) {
+  const d = document.getElementById('userDropdown');
+  const av = document.querySelector('.user-avatar');
+  if (!d || !d.classList.contains('open')) return;
+  if (!d.contains(e.target) && !(av && av.contains(e.target))) {
+    d.classList.remove('open');
+  }
+}
+// ESC 键关闭下拉
+function closeUserDropdownOnEsc(e) {
+  if (e.key === 'Escape') {
+    const d = document.getElementById('userDropdown');
+    if (d) d.classList.remove('open');
+  }
+}
+
+// ==================== 初始化 ====================
+function init() {
+  switchView('lib');  // 默认打开工具库，让用户先看到这个架构
+  addLog('ok', 'nmap -sn 192.168.1.0/24', '返回码 0 · 耗时 3.12s');
+  addLog('run', 'nmap -sV -p- 192.168.1.20', '执行中…');
+  addLog('blocked', 'clear', '已拦截 — 日志受保护');
+  // 注册全局下拉关闭事件
+  if (document.addEventListener) {
+    document.addEventListener('click', closeUserDropdownOnOutside);
+    document.addEventListener('keydown', closeUserDropdownOnEsc);
+  }
+}
+init();
+</script>
+
+</body>
+</html>
