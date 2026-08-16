@@ -18,6 +18,7 @@ import {
   runStatusColor, runStatusText, stepStatusColor, stepStatusText,
   gradeColor, gradeText, severityColor,
 } from '../utils/ui';
+import CommandRunList from '../components/CommandRunList';
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -332,6 +333,11 @@ export default function ProjectDetail() {
                   ))}
               </div>
             ),
+          },
+          {
+            key: 'cmdruns',
+            label: '工具执行记录',
+            children: <CommandRunList projectId={id} />,
           },
           {
             key: 'log',

@@ -1,10 +1,11 @@
 import { Layout, Menu } from 'antd';
-import { AppstoreOutlined, ProfileOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ProfileOutlined, ExperimentOutlined, HistoryOutlined } from '@ant-design/icons';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import ToolLibrary from './pages/ToolLibrary';
 import Templates from './pages/Templates';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import CommandRuns from './pages/CommandRuns';
 
 const { Header, Content } = Layout;
 
@@ -12,6 +13,7 @@ const navItems = [
   { key: '/tools', icon: <AppstoreOutlined />, label: '工具库' },
   { key: '/templates', icon: <ProfileOutlined />, label: '模板' },
   { key: '/projects', icon: <ExperimentOutlined />, label: '项目' },
+  { key: '/runs', icon: <HistoryOutlined />, label: '执行记录' },
 ];
 
 export default function App() {
@@ -43,6 +45,7 @@ export default function App() {
           <Route path="/templates" element={<Templates />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
+          <Route path="/runs" element={<CommandRuns />} />
           <Route path="*" element={<Navigate to="/projects" replace />} />
         </Routes>
       </Content>
