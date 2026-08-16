@@ -60,6 +60,24 @@ export const runStatusText: Record<string, string> = {
   timeout: '超时',
 };
 
+export const projectStatusColor: Record<string, string> = {
+  draft: 'default',
+  running: 'processing',
+  success: 'success',
+  fail: 'error',
+  partial: 'warning',
+  cancelled: 'default',
+};
+
+export const projectStatusText: Record<string, string> = {
+  draft: '草稿',
+  running: '运行中',
+  success: '已完成',
+  fail: '失败',
+  partial: '部分完成',
+  cancelled: '已取消',
+};
+
 export const gradeColor: Record<string, string> = {
   PASS: '#16a34a',
   CONDITIONAL_PASS: '#ea580c',

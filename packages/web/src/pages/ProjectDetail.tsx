@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout, Button, Tag, Space, Typography, Spin, Empty, Card, Tabs, Table, Modal, Form,
   Input, message, Progress, Descriptions, Statistic, Row, Col, Drawer, Popconfirm, Timeline, Cascader,
+  Tooltip, Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined, PlayCircleOutlined, StopOutlined, ReloadOutlined,
@@ -109,9 +110,25 @@ export default function ProjectDetail() {
     setBusy(true);
     loadProject().then(loadReport).catch(reportError).finally(() => setBusy(false));
     ToolsApi.list({ pageSize: 200 })
-      .then((res) => setTools(res.items.filter((t) => (t.commands ?? []).length > 0)))
+      .then((res) => setTools(res.items))
       .catch(reportError);
   }, [loadProject, loadReport]);
+
+  const toolById = useMemo(() => new Map(tools.map((t) => [t.id, t])), [tools]);
+  const runnableTools = useMemo(() => tools.filter((t) => (t.commands ?? []).length > 0), [tools]);
+  const templateSteps = template?.steps ?? [];
+  const commandManualSteps = useMemo(
+    () => templateSteps.filter((s) => {
+      const t = toolById.get(s.toolId);
+      return !!t && t.type === 'custom' && (t.commands?.length ?? 0) > 0;
+    }).map((s) => s.title),
+    [templateSteps, toolById],
+  );
+  const moduleStepCount = useMemo(
+    () => templateSteps.filter((s) => toolById.get(s.toolId)?.type === 'module').length,
+    [templateSteps, toolById],
+  );
+  const canStartOrchestration = !running && moduleStepCount > 0;
 
   const refreshSteps = useCallback(async (runId: string) => {
     try {
@@ -295,16 +312,16 @@ export default function ProjectDetail() {
           <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>刷新</Button>
           <Button onClick={openVars}>变量配置</Button>
           <Cascader
-            placeholder="单独执行工具…"
-            style={{ width: 240 }}
+            placeholder="单独执行工具（跳过编排）…"
+            style={{ width: 260 }}
             value={undefined}
             onChange={(v: (string | number)[] | undefined) => {
               if (!v || v.length < 2) return;
-              const tool = tools.find((t) => t.id === v[0]);
+              const tool = runnableTools.find((t) => t.id === v[0]);
               const cmd = tool?.commands?.find((c) => c.id === v[1]);
               if (tool && cmd) setSingleRun({ tool, command: cmd });
             }}
-            options={tools.map((t) => ({
+            options={runnableTools.map((t) => ({
               value: t.id,
               label: t.name,
               children: (t.commands ?? []).map((c) => ({ value: c.id, label: c.name })),
@@ -316,15 +333,37 @@ export default function ProjectDetail() {
           {running ? (
             <Button danger icon={<StopOutlined />} onClick={() => void cancelRun()}>取消运行</Button>
           ) : (
-            <Button type="primary" icon={<PlayCircleOutlined />} loading={busy} onClick={() => void startRun()}>
-              开始测试
-            </Button>
+            <Tooltip title={moduleStepCount === 0 ? '该模板没有可编排执行的模组步骤，请在模板中添加模组，或用「单独执行工具」直接运行命令' : undefined}>
+              <Button type="primary" icon={<PlayCircleOutlined />} loading={busy} disabled={!canStartOrchestration} onClick={() => void startRun()}>
+                开始测试
+              </Button>
+            </Tooltip>
           )}
         </Space>
       </Space>
 
       {running && (
         <Progress percent={progress} status="active" style={{ marginBottom: 12 }} />
+      )}
+
+      {!running && commandManualSteps.length > 0 && (
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 12 }}
+          message="以下步骤是命令手册工具，编排引擎暂不执行"
+          description={
+            <span>
+              编排运行只会执行表单式模组，命令手册步骤（{commandManualSteps.join('、')}）会被跳过。
+              如需运行这些命令，请用右上角「单独执行工具」逐条执行，其结果会自动保存到本项目。
+            </span>
+          }
+        />
+      )}
+      {!running && moduleStepCount === 0 && (
+        <Alert
+          type="info" showIcon style={{ marginBottom: 12 }}
+          message="该模板没有可编排执行的步骤"
+          description="你可以在「模板」页编辑添加表单式模组，或直接用右上角「单独执行工具」运行单条命令。"
+        />
       )}
 
       <Tabs
@@ -543,7 +582,17 @@ function FlowTab(props: {
       </Col>
       <Col span={18}>
         <Card size="small" title={`编排流程 · ${template.name} (${template.steps.length} 步)`}>
-          {template.steps.map((snap) => {
+          {template.steps.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="该模板还没有编排步骤"
+              style={{ padding: '24px 0' }}
+            >
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                请到「模板」页编辑添加步骤，或使用页头「单独执行工具」直接运行命令。
+              </Typography.Text>
+            </Empty>
+          ) : template.steps.map((snap) => {
             const sr = byStepId.get(snap.stepId);
             const status = sr?.status ?? 'pending';
             return (

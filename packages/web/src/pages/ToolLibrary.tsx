@@ -175,11 +175,18 @@ export default function ToolLibrary() {
         </div>
       </Sider>
       <Content style={{ padding: 16, overflow: 'auto' }}>
-        <Space size={16} style={{ marginBottom: 16, width: '100%' }}>
+        <Space size={16} style={{ marginBottom: 8, width: '100%' }}>
           <Statistic title="工具总数" value={stats.total} />
           <Statistic title="内置模组" value={stats.modules} />
           <Statistic title="命令手册" value={stats.manuals} />
           <Statistic title="被模板引用" value={stats.referenced} />
+        </Space>
+        <Space size={16} style={{ marginBottom: 16, width: '100%', color: '#64748b', fontSize: 12 }}>
+          <span>健康状态：</span>
+          <span><Badge color="green" text="健康" /></span>
+          <span><Badge color="red" text="异常" /></span>
+          <span><Badge color="gold" text="告警" /></span>
+          <span><Badge color="gray" text="未配置/未知" /></span>
         </Space>
         <Space style={{ marginBottom: 16 }}>
           <Input.Search

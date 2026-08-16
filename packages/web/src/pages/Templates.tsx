@@ -302,6 +302,11 @@ export default function Templates() {
               title="编排流程"
               extra={<Button type="primary" icon={<PlayCircleOutlined />} onClick={() => navigate(`/projects?newFrom=${selected.id}`)}>基于此模板创建项目</Button>}
             >
+              {selected.steps.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该模板还没有步骤" style={{ padding: '16px 0' }}>
+                  <Typography.Text type="secondary">点击右上角「编辑」添加步骤，或直接在项目页用「单独执行工具」运行命令。</Typography.Text>
+                </Empty>
+              ) : (
               <AntSteps direction="vertical" current={selected.steps.length - 1}
                 items={selected.steps.map((s) => ({
                   title: <Space><span>{s.title}</span><Tag>{s.stepId}</Tag><Tag color={s.onFailure === 'abort' ? 'red' : 'default'}>{s.onFailure}</Tag></Space>,
@@ -316,6 +321,7 @@ export default function Templates() {
                   ),
                 }))}
               />
+              )}
             </Card>
           </>
         )}

@@ -151,7 +151,9 @@ export default function CommandRunDetail({
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>工具: {detail.toolName}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>命令: {detail.commandName}</Typography.Text>
           {detail.projectId && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>项目: {detail.projectId.slice(0, 8)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              项目: {projects.find((p) => p.id === detail.projectId)?.name ?? detail.projectId.slice(0, 8)}
+            </Typography.Text>
           )}
         </Space>
       )}

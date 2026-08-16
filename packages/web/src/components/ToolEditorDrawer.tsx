@@ -207,7 +207,7 @@ export default function ToolEditorDrawer({
 
         <Form layout="vertical" disabled={readOnly}>
           <Row gutter={12}>
-            <Col span={14}>
+            <Col span={10}>
               <Form.Item label="工具名称" required>
                 <Input value={draft.name} onChange={(e) => patch('name', e.target.value)} placeholder="如 蓝牙检测工具箱" />
               </Form.Item>
@@ -217,7 +217,7 @@ export default function ToolEditorDrawer({
                 <Input value={draft.version} onChange={(e) => patch('version', e.target.value)} />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col span={8}>
               <Form.Item label="分类">
                 <Select
                   value={draft.category}

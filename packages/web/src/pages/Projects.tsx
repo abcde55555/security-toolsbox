@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Project, Template, ProjectRun } from '@en18031/shared';
 import { ProjectsApi, TemplatesApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { runStatusColor, runStatusText } from '../utils/ui';
+import { runStatusColor, runStatusText, projectStatusColor, projectStatusText } from '../utils/ui';
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -98,7 +98,7 @@ export default function Projects() {
               return t?.name ?? r.templateId;
             } },
             { title: '目标等级', dataIndex: 'targetComplianceLevel', render: (v: string) => <Tag color="blue">{v}</Tag> },
-            { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={runStatusColor[v] ?? 'default'}>{runStatusText[v] ?? v}</Tag> },
+            { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={projectStatusColor[v] ?? 'default'}>{projectStatusText[v] ?? v}</Tag> },
             { title: '最近运行', key: 'run', render: (_, r) => {
               const run = latestRuns[r.id];
               if (!run) return <Typography.Text type="secondary">未运行</Typography.Text>;
