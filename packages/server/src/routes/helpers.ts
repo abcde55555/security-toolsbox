@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiEnvelope, Paging } from '@en18031/shared';
-import type { ZodType, ZodError } from 'zod';
+import { ZodError, type ZodType } from 'zod';
 import { AppError } from '../services/errors.js';
 import { getServices } from '../services/index.js';
 import type { UserRole } from '@en18031/shared';
@@ -40,13 +40,20 @@ export function handleError(reply: FastifyReply, err: unknown): void {
     fail(reply, err.code, err.message, err.httpStatus, err.details);
     return;
   }
+  if (err instanceof ZodError) {
+    const msg = err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    fail(reply, 9003, msg || '请求参数不合法', 400, err.issues);
+    return;
+  }
   const message = err instanceof Error ? err.message : '内部错误';
   fail(reply, 9999, message, 500);
 }
 
 export function pagingFromQuery(query: { page?: string; pageSize?: string }): { page: number; pageSize: number } {
+  const parsedPage = Number(query.page ?? 1);
+  const parsedSize = Number(query.pageSize ?? 20);
   return {
-    page: Math.max(1, Number(query.page ?? 1)),
-    pageSize: Math.min(200, Math.max(1, Number(query.pageSize ?? 20))),
+    page: Number.isFinite(parsedPage) ? Math.max(1, Math.floor(parsedPage)) : 1,
+    pageSize: Number.isFinite(parsedSize) ? Math.min(200, Math.max(1, Math.floor(parsedSize))) : 20,
   };
 }

@@ -245,22 +245,24 @@ export class ReportService {
       return '<html><body><h1>暂无报告</h1><p>请先执行测试后再生成报告。</p></body></html>';
     }
     const { report, project, clauses } = detail;
+    const esc = (v: unknown): string =>
+      String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
     const gradeColor =
       report.grade === 'PASS' ? '#16a34a' : report.grade === 'FAIL' ? '#dc2626' : report.grade === 'CONDITIONAL_PASS' ? '#ea580c' : '#6b7280';
     const rows = clauses
       .map((c) => {
         const status = c.verdict ? (c.verdict.pass ? 'PASS' : 'FAIL') : 'NOT_COVERED';
         const color = status === 'PASS' ? '#16a34a' : status === 'FAIL' ? '#dc2626' : '#6b7280';
-        const reason = c.verdict?.reason ? String(c.verdict.reason).replace(/</g, '&lt;') : '未执行 / 未覆盖';
+        const reason = c.verdict?.reason ? esc(c.verdict.reason) : '未执行 / 未覆盖';
         return `<tr>
-          <td>${c.clauseId}</td><td>${c.chapter}</td><td>${c.title}</td><td>${c.level}</td>
+          <td>${esc(c.clauseId)}</td><td>${esc(c.chapter)}</td><td>${esc(c.title)}</td><td>${esc(c.level)}</td>
           <td style="color:${color};font-weight:600">${status}</td>
-          <td>${c.verdict?.severity ?? c.defaultSeverity}</td>
+          <td>${esc(c.verdict?.severity ?? c.defaultSeverity)}</td>
           <td>${reason}</td>
         </tr>`;
       })
       .join('');
-    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>EN18031 合规报告 - ${project.name}</title>
+    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>EN18031 合规报告 - ${esc(project.name)}</title>
     <style>
       body{font-family:-apple-system,"PingFang SC",sans-serif;margin:40px;color:#1f2937}
       h1{font-size:24px} h2{font-size:18px;margin-top:28px;border-bottom:2px solid #e5e7eb;padding-bottom:6px}
@@ -274,8 +276,8 @@ export class ReportService {
       .meta{color:#6b7280;font-size:13px}
     </style></head><body>
       <h1>EN18031 合规测试报告</h1>
-      <div class="meta">项目：${project.name} | 标准：${project.standardVersion} | 目标等级：${project.targetComplianceLevel} | 生成时间：${report.generatedAt}</div>
-      <div class="grade">${report.grade}</div>
+      <div class="meta">项目：${esc(project.name)} | 标准：${esc(project.standardVersion)} | 目标等级：${esc(project.targetComplianceLevel)} | 生成时间：${esc(report.generatedAt)}</div>
+      <div class="grade">${esc(report.grade)}</div>
       <div class="metrics">
         <div class="metric"><div class="n">${report.summary.applicable}</div><div>适用条款</div></div>
         <div class="metric"><div class="n" style="color:#16a34a">${report.summary.pass}</div><div>通过</div></div>
@@ -285,13 +287,12 @@ export class ReportService {
       </div>
       <h2>章节通过率</h2>
       <table><tr><th>章节</th><th>总数</th><th>通过</th><th>失败</th><th>未覆盖</th></tr>
-      ${Object.entries(report.summary.byChapter).map(([ch, s]) => `<tr><td>${ch}</td><td>${s.total}</td><td>${s.pass}</td><td>${s.fail}</td><td>${s.notCovered}</td></tr>`).join('')}
+      ${Object.entries(report.summary.byChapter).map(([ch, s]) => `<tr><td>${esc(ch)}</td><td>${s.total}</td><td>${s.pass}</td><td>${s.fail}</td><td>${s.notCovered}</td></tr>`).join('')}
       </table>
       <h2>条款判定详情</h2>
       <table><tr><th>条款</th><th>章节</th><th>标题</th><th>等级</th><th>状态</th><th>严重度</th><th>判定理由</th></tr>
       ${rows}
       </table>
-      <script>window.onafterprint=function(){};</script>
     </body></html>`;
   }
 }

@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 
 interface ActiveRun {
   runId: string;
@@ -30,6 +31,26 @@ export class OrchestratorService {
 
   constructor(private ctx: ServiceContext) {
     this.clauseMapping = new ClauseMappingService(ctx);
+    this.reconcileOrphans();
+  }
+
+  private reconcileOrphans(): void {
+    for (const sr of this.ctx.repos.projects.listIncompleteStepRuns()) {
+      this.ctx.repos.projects.updateStepRun(sr.id, {
+        status: 'cancelled',
+        finishedAt: nowIso(),
+        error: { code: 'INTERRUPTED', message: '服务重启，运行被中断' },
+      });
+    }
+    for (const run of this.ctx.repos.projects.listIncompleteRuns()) {
+      this.ctx.repos.projects.updateRun(run.id, {
+        status: 'cancelled',
+        finishedAt: nowIso(),
+        progressPercent: run.progressPercent,
+      });
+      this.ctx.repos.projects.setStatus(run.projectId, 'cancelled', nowIso());
+      activeRuns.delete(run.id);
+    }
   }
 
   async startRun(
@@ -97,7 +118,8 @@ export class OrchestratorService {
       after: { projectId, stepCount: steps.length },
     });
 
-    void this.executeRun(run.id, projectId, template.id, steps, variables, templateDefaults, options.concurrencyOverride ?? template.concurrencyLimit);
+    void this.executeRun(run.id, projectId, template.id, steps, variables, templateDefaults, options.concurrencyOverride ?? template.concurrencyLimit)
+      .catch((err) => logger.error({ err, runId: run.id }, 'executeRun rejected'));
     return this.ctx.repos.projects.getRun(run.id)!;
   }
 
@@ -129,7 +151,8 @@ export class OrchestratorService {
     });
     const run = this.ctx.repos.projects.getRun(runId)!;
     const variables = run.snapshotVariables as Record<string, unknown>;
-    void this.executeSingleStep(newSr.id, projectId, runId, old.stepSnapshot as TemplateStep, variables, {});
+    void this.executeSingleStep(newSr.id, projectId, runId, old.stepSnapshot as TemplateStep, variables, {})
+      .catch((err) => logger.error({ err, stepRunId: newSr.id }, 'retry executeSingleStep rejected'));
     return newSr;
   }
 
@@ -197,7 +220,14 @@ export class OrchestratorService {
     };
 
     await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
       const tick = (): void => {
+        if (settled) return;
         if (active.cancelToken.isRequested) {
           for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
             if (!terminalStatuses.has(sr.status)) {
@@ -208,7 +238,7 @@ export class OrchestratorService {
           this.ctx.repos.projects.updateRun(runId, { status: 'cancelled', finishedAt: nowIso(), progressPercent: 100 });
           this.ctx.repos.projects.setStatus(projectId, 'cancelled', nowIso());
           activeRuns.delete(runId);
-          resolve();
+          done();
           return;
         }
 
@@ -267,7 +297,7 @@ export class OrchestratorService {
               updateBatchProgress();
               if (this.isAllDone(steps, stepRunByStepId)) {
                 this.finishRun(runId, projectId, templateId);
-                resolve();
+                done();
               } else {
                 tick();
               }
@@ -282,7 +312,7 @@ export class OrchestratorService {
               this.emitStatus(projectId, runId, this.ctx.repos.projects.getStepRun(sr.id)!);
               if (this.isAllDone(steps, stepRunByStepId)) {
                 this.finishRun(runId, projectId, templateId);
-                resolve();
+                done();
               } else {
                 tick();
               }
@@ -292,7 +322,7 @@ export class OrchestratorService {
 
         if (running.size === 0 && this.isAllDone(steps, stepRunByStepId)) {
           this.finishRun(runId, projectId, templateId);
-          resolve();
+          done();
         }
       };
       tick();
@@ -314,6 +344,7 @@ export class OrchestratorService {
   }
 
   private finishRun(runId: string, projectId: string, templateId: string): void {
+    if (!activeRuns.has(runId)) return;
     const srs = this.ctx.repos.projects.listStepRuns(runId);
     const hasFail = srs.some((s) => s.status === 'fail' || s.status === 'fail_abort_triggered');
     const hasTimeout = srs.some((s) => s.status === 'timeout');
@@ -474,7 +505,7 @@ export class OrchestratorService {
     projectId: string,
     toolId: string,
     params: Record<string, unknown>,
-    opts: { commandId?: string; commandOverride?: string; timeoutMs?: number } = {},
+    opts: { commandId?: string; timeoutMs?: number } = {},
   ): Promise<{ runId: string; stepRunId: string; result: ExecutionResult }> {
     const project = this.ctx.repos.projects.getById(projectId);
     if (!project) throw Errors.notFound('项目', projectId);
@@ -524,7 +555,7 @@ export class OrchestratorService {
         timeoutMs: opts.timeoutMs,
       });
     } else {
-      const command = opts.commandOverride || this.buildCommand(step, params);
+      const command = this.buildCommand(step, params);
       result = await this.ctx.engine.runCommand(command, {
         projectId,
         stepId: step.stepId,
@@ -535,15 +566,22 @@ export class OrchestratorService {
       });
     }
     this.persistResult(sr.id, projectId, run.id, toolId, result);
+    const runStatus: 'success' | 'fail' | 'cancelled' =
+      result.status === 'success'
+        ? 'success'
+        : result.status === 'cancelled'
+          ? 'cancelled'
+          : 'fail';
     this.ctx.repos.projects.updateStepRun(sr.id, {
-      status: result.status === 'success' ? 'success' : result.status === 'cancelled' ? 'cancelled' : result.status === 'timeout' ? 'timeout' : 'fail',
+      status: runStatus,
       exitCode: result.exitCode,
       durationMs: result.durationMs,
       finishedAt: nowIso(),
       percent: 100,
       error: result.error,
     });
-    this.ctx.repos.projects.updateRun(run.id, { status: 'success', finishedAt: nowIso(), progressPercent: 100 });
+    this.ctx.repos.projects.updateRun(run.id, { status: runStatus, finishedAt: nowIso(), progressPercent: 100 });
+    this.ctx.repos.projects.setStatus(projectId, runStatus, nowIso());
     this.ctx.repos.audit.insert({
       userId: this.ctx.userId,
       action: 'run.manual_tool',
@@ -569,13 +607,11 @@ export class OrchestratorService {
   }
 
   private buildCommand(step: TemplateStep, params: Record<string, unknown>): string {
-    const explicit = params.command as string | undefined;
-    if (explicit) return explicit;
     const tool = this.ctx.repos.tools.getById(step.toolId);
     const parts: string[] = [];
     if (tool?.path) parts.push(tool.path);
     for (const [k, v] of Object.entries(params)) {
-      if (k === 'command' || v === undefined || v === null || v === '') continue;
+      if (v === undefined || v === null || v === '') continue;
       if (typeof v === 'boolean') {
         if (v) parts.push(`--${k}`);
       } else {

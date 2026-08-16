@@ -16,13 +16,46 @@ import { clauseRoutes } from './routes/clauses.js';
 import { reportRoutes } from './routes/reports.js';
 import { commandRunRoutes } from './routes/commandRuns.js';
 
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'unhandled promise rejection');
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'uncaught exception, exiting');
+  process.exit(1);
+});
+
+function isLoopbackHost(host: string): boolean {
+  const hostname = host.split(':')[0].replace(/^\[|\]$/g, '').toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+}
+
+function corsOrigin(origin: string | undefined, cb: (err: Error | null, allow?: unknown) => void): void {
+  if (!origin) return cb(null, true);
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return cb(null, origin);
+    }
+  } catch {
+    // fall through to deny
+  }
+  cb(null, false);
+}
+
 async function bootstrap(): Promise<void> {
   const app = Fastify({
     logger,
     bodyLimit: 25 * 1024 * 1024,
   });
 
-  await app.register(cors, { origin: true, credentials: true });
+  await app.register(cors, { origin: corsOrigin as never, credentials: true });
+
+  app.addHook('onRequest', async (req, reply) => {
+    const host = req.headers.host;
+    if (host && !isLoopbackHost(host) && config.host !== '0.0.0.0') {
+      reply.code(403).send({ code: 9003, message: 'invalid host' });
+    }
+  });
 
   app.get('/api/health', async () => ({
     code: 0,
@@ -46,7 +79,7 @@ async function bootstrap(): Promise<void> {
   }
 
   const io = new SocketIOServer(app.server, {
-    cors: { origin: true, credentials: true },
+    cors: { origin: corsOrigin as never, credentials: true },
     path: '/socket.io',
   });
 
@@ -70,7 +103,9 @@ async function bootstrap(): Promise<void> {
   services.bus.on('run:progress', forward('run:progress'));
   services.bus.on('run:status', forward('run:status'));
   services.bus.on('run:batchProgress', forward('run:batchProgress'));
-  services.bus.on('tool:health', forward('tool:health'));
+  services.bus.on('tool:health', (payload: Record<string, unknown>) => {
+    io.emit('tool:health', payload);
+  });
 
   if (fs.existsSync(config.webDistDir)) {
     await app.register(fastifyStatic, {

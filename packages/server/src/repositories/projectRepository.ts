@@ -157,6 +157,20 @@ export class ProjectRepository {
     return row ? this.mapRun(row) : null;
   }
 
+  listIncompleteRuns(): ProjectRun[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM project_runs WHERE status NOT IN ('success','fail','partial','cancelled')`)
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.mapRun(r));
+  }
+
+  listIncompleteStepRuns(): StepRun[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM step_runs WHERE status IN ('pending','running','scheduled')`)
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.mapStepRun(r));
+  }
+
   private mapRun(r: Record<string, unknown>): ProjectRun {
     return {
       id: String(r.id),

@@ -45,7 +45,11 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { id, reportId } = req.params as { id: string; reportId: string };
       const html = getServices().reports.renderReportHtml(id, reportId);
-      reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
+      reply
+        .header('Content-Type', 'text/html; charset=utf-8')
+        .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'")
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(html);
     } catch (e) {
       handleError(reply, e);
     }

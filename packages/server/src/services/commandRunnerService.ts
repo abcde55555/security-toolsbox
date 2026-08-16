@@ -14,6 +14,7 @@ import { logger } from '../logger.js';
 
 const MAX_CONCURRENCY = 8;
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_TIMEOUT_MS = 10 * 60_000;
 const PREVIEW_TAIL_BYTES = 4096;
 const DETAIL_TAIL_BYTES = 200 * 1024;
 
@@ -74,13 +75,16 @@ export class CommandRunnerService {
       return;
     }
     await new Promise<void>((resolve) => this.waitQueue.push(resolve));
-    this.runningCount++;
+    // The slot was handed off directly by releaseSlot; runningCount is unchanged.
   }
 
   private releaseSlot(): void {
-    this.runningCount--;
     const next = this.waitQueue.shift();
-    if (next) next();
+    if (next) {
+      next();
+      return;
+    }
+    this.runningCount--;
   }
 
   private toolAndCommand(toolId: string, commandId: string) {
@@ -110,6 +114,16 @@ export class CommandRunnerService {
       throw Errors.validation('表单参数不合法', formErrors);
     }
     const values = fillFormValues(cmd, withDefaults);
+    const rawKeys = new Set(cmd.rawParams ?? []);
+    if (rawKeys.size > 0) {
+      const forbidden = /[;|&$`<>\n\r{}()\\!#]/;
+      for (const key of rawKeys) {
+        const v = values[key];
+        if (typeof v === 'string' && forbidden.test(v)) {
+          throw Errors.validation(`原始参数 "${key}" 包含不允许的 shell 控制字符`);
+        }
+      }
+    }
     const rendered = renderCommandTemplate(cmd.commandTemplate, values, {
       rawKeys: cmd.rawParams,
     });
@@ -141,6 +155,9 @@ export class CommandRunnerService {
     const token = createCancelToken();
     const promise = this.execute(run.id, tool, cmd, body.timeoutMs, token);
     this.active.set(run.id, { token, promise });
+    promise.catch((err) => {
+      logger.error({ err, runId: run.id }, 'command run promise rejected');
+    });
 
     return { runId: run.id, run };
   }
@@ -152,23 +169,37 @@ export class CommandRunnerService {
     overrideTimeoutMs: number | undefined,
     token: ReturnType<typeof createCancelToken>,
   ): Promise<CommandRun> {
-    await this.acquireSlot();
     const runDir = path.join(config.filesDir, 'cmdruns');
-    fs.mkdirSync(runDir, { recursive: true });
     const stdoutPath = path.join(runDir, `${runId}.stdout.log`);
     const stderrPath = path.join(runDir, `${runId}.stderr.log`);
-    const stdoutStream = fs.createWriteStream(stdoutPath, { flags: 'a' });
-    const stderrStream = fs.createWriteStream(stderrPath, { flags: 'a' });
+    let stdoutStream: fs.WriteStream | undefined;
+    let stderrStream: fs.WriteStream | undefined;
+    let start = Date.now();
+    let slotAcquired = false;
 
-    const existing = this.ctx.repos.commandRuns.getById(runId);
-    const timeoutMs = overrideTimeoutMs ?? cmd.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const start = Date.now();
-
-    const emitStatus = (status: string, extra: Record<string, unknown> = {}) => {
+    const onStreamError = (label: string) => (err: Error) => {
+      logger.warn({ err, runId, label }, 'command run log stream error');
+    };
+    const emitStatus = (status: string, extra: Record<string, unknown> = {}): void => {
       this.ctx.bus.emit('run:status', { runId, status, ...extra });
     };
 
     try {
+      await this.acquireSlot();
+      slotAcquired = true;
+      fs.mkdirSync(runDir, { recursive: true });
+      const out = fs.createWriteStream(stdoutPath, { flags: 'a' });
+      const errStream = fs.createWriteStream(stderrPath, { flags: 'a' });
+      stdoutStream = out;
+      stderrStream = errStream;
+      out.on('error', onStreamError('stdout'));
+      errStream.on('error', onStreamError('stderr'));
+
+      const existing = this.ctx.repos.commandRuns.getById(runId);
+      const rawTimeout = overrideTimeoutMs ?? cmd.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const timeoutMs = Math.min(Math.max(1, rawTimeout), MAX_TIMEOUT_MS);
+      start = Date.now();
+
       emitStatus('running', { resolvedCommand: existing?.resolvedCommand });
 
       const env = { ...(tool.envVars ?? {}), ...(cmd.envVars ?? {}) };
@@ -188,9 +219,9 @@ export class CommandRunnerService {
           if (p.logLine) {
             const stream = p.stream ?? 'stdout';
             if (stream === 'stderr') {
-              stderrStream.write(p.logLine + '\n');
+              errStream.write(p.logLine + '\n');
             } else {
-              stdoutStream.write(p.logLine + '\n');
+              out.write(p.logLine + '\n');
             }
             this.ctx.bus.emit('run:logLine', {
               runId,
@@ -202,8 +233,8 @@ export class CommandRunnerService {
       });
 
       await Promise.all([
-        new Promise<void>((res) => stdoutStream.end(() => res())),
-        new Promise<void>((res) => stderrStream.end(() => res())),
+        new Promise<void>((res) => out.end(() => res())),
+        new Promise<void>((res) => errStream.end(() => res())),
       ]);
 
       const durationMs = Date.now() - start;
@@ -234,18 +265,24 @@ export class CommandRunnerService {
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       logger.error({ err, runId }, 'command run crashed');
+      if (stderrStream) {
+        try {
+          stderrStream.write(`\n[runner crash] ${err.message}\n`);
+        } catch {
+          // ignore stream write failure
+        }
+      }
       await Promise.all([
-        new Promise<void>((res) => stdoutStream.end(() => res())),
-        new Promise<void>((res) => stderrStream.end(() => res())),
+        new Promise<void>((res) => stdoutStream?.end(() => res()) ?? res()),
+        new Promise<void>((res) => stderrStream?.end(() => res()) ?? res()),
       ]);
       const error: ExecutionError = { code: 'CRASH', message: err.message, stack: err.stack };
-      stderrStream.write(`\n[runner crash] ${err.message}\n`);
       const finished = this.ctx.repos.commandRuns.markFinished(runId, {
         status: 'crash',
         exitCode: 1,
         durationMs: Date.now() - start,
-        stdoutFileRef: stdoutPath,
-        stderrFileRef: stderrPath,
+        stdoutFileRef: stdoutStream ? stdoutPath : undefined,
+        stderrFileRef: stderrStream ? stderrPath : undefined,
         stdoutPreview: tailFile(stdoutPath, PREVIEW_TAIL_BYTES),
         error,
       })!;

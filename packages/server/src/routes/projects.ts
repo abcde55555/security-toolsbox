@@ -156,8 +156,11 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/projects/:id/tools/:toolId/execute-cmd', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
       const { id, toolId } = req.params as { id: string; toolId: string };
-      const body = (req.body ?? {}) as { commandId?: string; commandOverride?: string; params?: Record<string, unknown>; timeoutMs?: number };
-      const r = await getServices().orchestrator.runToolManually(id, toolId, body.params ?? {}, body);
+      const body = (req.body ?? {}) as { commandId?: string; params?: Record<string, unknown>; timeoutMs?: number };
+      const r = await getServices().orchestrator.runToolManually(id, toolId, body.params ?? {}, {
+        commandId: body.commandId,
+        timeoutMs: body.timeoutMs,
+      });
       ok(reply, { runId: r.runId, stepRunId: r.stepRunId, status: r.result.status });
     } catch (e) {
       handleError(reply, e);
