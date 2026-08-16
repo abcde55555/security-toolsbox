@@ -33,13 +33,14 @@ function toLines(text: string, stream: 'stdout' | 'stderr') {
 }
 
 export default function RunCommandModal({
-  open, tool, command, onClose, onChanged,
+  open, tool, command, onClose, onChanged, defaultProjectId,
 }: {
   open: boolean;
   tool: Tool;
   command: ToolCommand | null;
   onClose: () => void;
   onChanged?: () => void;
+  defaultProjectId?: string;
 }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -91,6 +92,10 @@ export default function RunCommandModal({
     return () => clearInterval(t);
   }, [runId, finished]);
 
+  useEffect(() => {
+    if (finished && defaultProjectId) onChanged?.();
+  }, [finished, defaultProjectId]);
+
   async function pollOnce() {
     if (!runId) return;
     try {
@@ -122,7 +127,10 @@ export default function RunCommandModal({
     }
     setBusy(true);
     try {
-      const { runId: rid } = await CommandRunsApi.start(tool.id, command.id, { params: values });
+      const { runId: rid } = await CommandRunsApi.start(tool.id, command.id, {
+        params: values,
+        projectId: defaultProjectId,
+      });
       setRunId(rid);
       buffer.reset();
       reconciled.current = false;
@@ -271,7 +279,13 @@ export default function RunCommandModal({
 
               <Terminal lines={buffer.lines} height={300} empty="命令运行中，输出将实时显示…" />
 
-              {finished && (
+              {finished && detail?.projectId ? (
+                <Alert
+                  style={{ marginTop: 12 }}
+                  type="success" showIcon
+                  message="本次运行已保存到项目，可在项目页「工具执行记录」中查看。"
+                />
+              ) : finished ? (
                 <>
                   <Divider style={{ margin: '14px 0 10px' }}>保存为项目证据</Divider>
                   <Space wrap>
@@ -299,7 +313,7 @@ export default function RunCommandModal({
                     </Tooltip>
                   </Space>
                 </>
-              )}
+              ) : null}
             </>
           )}
         </>

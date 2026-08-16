@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout, Button, Tag, Space, Typography, Spin, Empty, Card, Tabs, Table, Modal, Form,
-  Input, message, Progress, Descriptions, Statistic, Row, Col, Drawer, Popconfirm, Timeline,
+  Input, message, Progress, Descriptions, Statistic, Row, Col, Drawer, Popconfirm, Timeline, Cascader,
 } from 'antd';
 import {
   ArrowLeftOutlined, PlayCircleOutlined, StopOutlined, ReloadOutlined,
-  FileExcelOutlined, FileTextOutlined, RedoOutlined,
+  FileExcelOutlined, FileTextOutlined, RedoOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import type {
-  Project, ProjectRun, StepRun, Template, AuditLog, Report,
+  Project, ProjectRun, StepRun, Template, AuditLog, Report, Tool, ToolCommand,
 } from '@en18031/shared';
-import { ProjectsApi, TemplatesApi, ReportsApi, type StepRunDetail, type ReportDetail } from '../api/endpoints';
+import { ProjectsApi, TemplatesApi, ReportsApi, ToolsApi, type StepRunDetail, type ReportDetail } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { useRunStream } from '../api/socket';
 import {
@@ -19,6 +19,7 @@ import {
   gradeColor, gradeText, severityColor,
 } from '../utils/ui';
 import CommandRunList from '../components/CommandRunList';
+import RunCommandModal from '../components/RunCommandModal';
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -52,6 +53,9 @@ export default function ProjectDetail() {
   const [report, setReport] = useState<Report | null>(null);
   const [reportDetail, setReportDetail] = useState<ReportDetail | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [singleRun, setSingleRun] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
+  const [cmdRunsVersion, setCmdRunsVersion] = useState(0);
   const termRef = useRef<HTMLDivElement>(null);
 
   const activeRun = useMemo(
@@ -104,6 +108,9 @@ export default function ProjectDetail() {
   useEffect(() => {
     setBusy(true);
     loadProject().then(loadReport).catch(reportError).finally(() => setBusy(false));
+    ToolsApi.list({ pageSize: 200 })
+      .then((res) => setTools(res.items.filter((t) => (t.commands ?? []).length > 0)))
+      .catch(reportError);
   }, [loadProject, loadReport]);
 
   const refreshSteps = useCallback(async (runId: string) => {
@@ -287,6 +294,25 @@ export default function ProjectDetail() {
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>刷新</Button>
           <Button onClick={openVars}>变量配置</Button>
+          <Cascader
+            placeholder="单独执行工具…"
+            style={{ width: 240 }}
+            value={undefined}
+            onChange={(v: (string | number)[] | undefined) => {
+              if (!v || v.length < 2) return;
+              const tool = tools.find((t) => t.id === v[0]);
+              const cmd = tool?.commands?.find((c) => c.id === v[1]);
+              if (tool && cmd) setSingleRun({ tool, command: cmd });
+            }}
+            options={tools.map((t) => ({
+              value: t.id,
+              label: t.name,
+              children: (t.commands ?? []).map((c) => ({ value: c.id, label: c.name })),
+            }))}
+            changeOnSelect={false}
+            allowClear={false}
+            suffixIcon={<ThunderboltOutlined />}
+          />
           {running ? (
             <Button danger icon={<StopOutlined />} onClick={() => void cancelRun()}>取消运行</Button>
           ) : (
@@ -337,7 +363,7 @@ export default function ProjectDetail() {
           {
             key: 'cmdruns',
             label: '工具执行记录',
-            children: <CommandRunList projectId={id} />,
+            children: <CommandRunList key={`cmdruns-${cmdRunsVersion}`} projectId={id} />,
           },
           {
             key: 'log',
@@ -460,6 +486,17 @@ export default function ProjectDetail() {
           </Space>
         )}
       </Drawer>
+
+      {singleRun && (
+        <RunCommandModal
+          open
+          tool={singleRun.tool}
+          command={singleRun.command}
+          defaultProjectId={id}
+          onClose={() => setSingleRun(null)}
+          onChanged={() => setCmdRunsVersion((v) => v + 1)}
+        />
+      )}
     </Content>
   );
 }
