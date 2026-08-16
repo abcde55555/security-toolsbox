@@ -3,7 +3,7 @@ import {
   Space, Typography, Tag, Button, Spin, Alert, Divider, Select, Tooltip, message, Popconfirm,
 } from 'antd';
 import {
-  ReloadOutlined, CopyOutlined, SaveOutlined, CheckCircleTwoTone, CloseCircleTwoTone,
+  ReloadOutlined, CopyOutlined, SaveOutlined, CheckCircleTwoTone, CloseCircleTwoTone, StopOutlined,
 } from '@ant-design/icons';
 import type { Clause } from '@en18031/shared';
 import { CommandRunsApi, ProjectsApi, ClausesApi, type CommandRunDetail as RunDetail } from '../api/endpoints';
@@ -31,13 +31,16 @@ export default function CommandRunDetail({
   const [attachProject, setAttachProject] = useState<string>();
   const [attachClause, setAttachClause] = useState<string>();
   const reconciled = useRef(false);
+  const pollSeq = useRef(0);
   const buffer = useLogBuffer(3000);
 
   const running = !!detail && !TERMINAL.has(detail.status);
 
   async function poll() {
+    const seq = ++pollSeq.current;
     try {
       const d = await CommandRunsApi.get(runId);
+      if (seq !== pollSeq.current) return; // a newer runId / poll superseded this response
       setDetail(d);
       if (TERMINAL.has(d.status) && !reconciled.current) {
         reconciled.current = true;
@@ -48,7 +51,17 @@ export default function CommandRunDetail({
     }
   }
 
+  async function cancel() {
+    try {
+      await CommandRunsApi.cancel(runId);
+      await poll();
+    } catch (e) {
+      reportError(e);
+    }
+  }
+
   useEffect(() => {
+    pollSeq.current++;
     setDetail(null);
     reconciled.current = false;
     buffer.reset();
@@ -159,7 +172,12 @@ export default function CommandRunDetail({
       )}
 
       {running && (
-        <Alert type="info" showIcon message="命令运行中，输出实时显示…" />
+        <Space>
+          <Alert type="info" showIcon message="命令运行中，输出实时显示…" style={{ flex: 1 }} />
+          <Popconfirm title="终止本次运行？" onConfirm={() => void cancel()} okText="终止" cancelText="取消" okButtonProps={{ danger: true }}>
+            <Button danger icon={<StopOutlined />}>终止运行</Button>
+          </Popconfirm>
+        </Space>
       )}
       {!running && exitOk && (
         <Alert type="success" showIcon icon={<CheckCircleTwoTone twoToneColor="#52c41a" />} message="执行成功" />

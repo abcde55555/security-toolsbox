@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Table, Tag, Select, Input, Space, Button, Drawer, Typography, Tooltip, Empty,
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import type { Project } from '@en18031/shared';
 import { CommandRunsApi, ProjectsApi, type CommandRunDetail as CommandRunDetailDTO } from '../api/endpoints';
 import { reportError } from '../api/client';
@@ -21,16 +20,17 @@ const STATUS_OPTIONS = [
 ];
 
 export default function CommandRunList({ projectId, height }: { projectId?: string; height?: number | string }) {
-  const navigate = useNavigate();
   const [items, setItems] = useState<CommandRunDetailDTO[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [status, setStatus] = useState<string>();
   const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeId, setActiveId] = useState<string>();
   const [projects, setProjects] = useState<Project[]>([]);
+  const loadSeq = useRef(0);
 
   const projectName = useMemo(() => {
     const map = new Map(projects.map((p) => [p.id, p.name]));
@@ -38,24 +38,35 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
   }, [projects]);
 
   async function load() {
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const res = await CommandRunsApi.list({
-        page, pageSize, projectId, status, keyword: keyword.trim() || undefined,
+        page, pageSize, projectId, status, keyword: debouncedKeyword.trim() || undefined,
       });
+      if (seq !== loadSeq.current) return;
       setItems(res.items);
       setTotal(res.total);
     } catch (e) {
       reportError(e);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
-  useEffect(() => { void load(); }, [page, pageSize, projectId, status]);
+  useEffect(() => { void load(); }, [page, pageSize, projectId, status, debouncedKeyword]);
   useEffect(() => {
     void ProjectsApi.list().then(setProjects).catch(() => {});
   }, []);
+
+  // debounce the search box so keystrokes don't fire a request each
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedKeyword(keyword);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [keyword]);
 
   // auto-refresh while any row is non-terminal
   const hasLive = items.some((r) => NON_TERMINAL.has(r.status));
@@ -63,7 +74,7 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
     if (!hasLive) return;
     const t = setInterval(() => void load(), 4000);
     return () => clearInterval(t);
-  }, [hasLive, page, pageSize, projectId, status, keyword]);
+  }, [hasLive, page, pageSize, projectId, status, debouncedKeyword]);
 
   const columns = [
     {
@@ -108,7 +119,6 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
           style={{ width: 240 }}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          onSearch={() => { setPage(1); void load(); }}
         />
         <Select
           placeholder="状态"

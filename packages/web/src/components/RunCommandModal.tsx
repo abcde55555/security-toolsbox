@@ -47,6 +47,7 @@ export default function RunCommandModal({
   const [runId, setRunId] = useState<string>();
   const [detail, setDetail] = useState<CommandRunDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const [attachProject, setAttachProject] = useState<string>();
   const [attachClause, setAttachClause] = useState<string>();
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
@@ -121,8 +122,10 @@ export default function RunCommandModal({
       setErrors(errs);
       return;
     }
-    if (preview.missing.length > 0) {
-      message.error(`缺少参数: ${preview.missing.join(', ')}`);
+    const requiredIds = new Set(command.params.filter((f) => f.required).map((f) => f.id));
+    const missingRequired = preview.missing.filter((k) => requiredIds.has(k));
+    if (missingRequired.length > 0) {
+      message.error(`缺少必填参数: ${missingRequired.join(', ')}`);
       return;
     }
     setBusy(true);
@@ -157,18 +160,23 @@ export default function RunCommandModal({
       message.warning('请先选择要挂载的项目');
       return;
     }
+    if (attaching) return;
+    setAttaching(true);
     try {
       await CommandRunsApi.attach(runId, {
         projectId: attachProject,
         clauseId: attachClause,
         note: '工具手册执行记录',
       });
+      await pollOnce();
       message.success('已保存到项目');
       onChanged?.();
       setAttachProject(undefined);
       setAttachClause(undefined);
     } catch (e) {
       reportError(e);
+    } finally {
+      setAttaching(false);
     }
   }
 
@@ -233,9 +241,17 @@ export default function RunCommandModal({
                 }}>
                   {preview.command || <span style={{ color: '#64748b' }}>（填写参数后生成）</span>}
                 </div>
-                {preview.missing.length > 0 && (
-                  <Tag color="red" style={{ marginTop: 6 }}>未填参数: {preview.missing.join(', ')}</Tag>
-                )}
+                {preview.missing.length > 0 && (() => {
+                  const requiredIds = new Set(command.params.filter((f) => f.required).map((f) => f.id));
+                  const req = preview.missing.filter((k) => requiredIds.has(k));
+                  const opt = preview.missing.filter((k) => !requiredIds.has(k));
+                  return (
+                    <>
+                      {req.length > 0 && <Tag color="red" style={{ marginTop: 6 }}>未填必填参数: {req.join(', ')}</Tag>}
+                      {opt.length > 0 && <Tag color="orange" style={{ marginTop: 6 }}>未填可选参数（将留空）: {opt.join(', ')}</Tag>}
+                    </>
+                  );
+                })()}
                 {preview.unused.length > 0 && (
                   <Tag color="orange" style={{ marginTop: 6 }}>未使用参数: {preview.unused.join(', ')}</Tag>
                 )}
@@ -309,7 +325,7 @@ export default function RunCommandModal({
                       options={clauses.map((c) => ({ value: c.clauseId, label: `${c.clauseId} ${c.title}` }))}
                     />
                     <Tooltip title="将本次运行挂到所选项目下，作为执行证据留存">
-                      <Button type="primary" ghost icon={<SaveOutlined />} onClick={() => void attach()}>保存到项目</Button>
+                      <Button type="primary" ghost icon={<SaveOutlined />} loading={attaching} onClick={() => void attach()}>保存到项目</Button>
                     </Tooltip>
                   </Space>
                 </>
