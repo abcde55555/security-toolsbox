@@ -19,6 +19,17 @@ export interface RunCommandOptions {
   env?: Record<string, string>;
   onProgress?: (p: CommandProgress) => void;
   cancelToken?: CancelToken;
+  /** Keep full stdout/stderr in the resolved result. Set false when output is
+   *  consumed via onProgress (e.g. streamed to disk) to avoid unbounded memory. */
+  collectOutput?: boolean;
+}
+
+const MAX_BUFFER_BYTES = 2 * 1024 * 1024;
+
+function appendLimited(prev: string, chunk: string): string {
+  const next = prev + chunk;
+  if (next.length <= MAX_BUFFER_BYTES) return next;
+  return next.slice(next.length - MAX_BUFFER_BYTES);
 }
 
 export class CommandExecutor {
@@ -26,6 +37,7 @@ export class CommandExecutor {
     return new Promise((resolve) => {
       const start = Date.now();
       const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1000;
+      const collectOutput = opts.collectOutput !== false;
       const child = spawn(command, {
         shell: true,
         cwd: opts.cwd,
@@ -90,20 +102,20 @@ export class CommandExecutor {
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
-        stdout += text;
+        if (collectOutput) stdout = appendLimited(stdout, text);
         for (const line of text.split(/\r?\n/)) {
           if (line.length > 0) opts.onProgress?.({ logLine: line, stream: 'stdout' });
         }
       });
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
-        stderr += text;
+        if (collectOutput) stderr = appendLimited(stderr, text);
         for (const line of text.split(/\r?\n/)) {
           if (line.length > 0) opts.onProgress?.({ logLine: line, stream: 'stderr' });
         }
       });
       child.on('error', (err) => {
-        stderr += `\n[spawn error] ${err.message}`;
+        if (collectOutput) stderr = appendLimited(stderr, `\n[spawn error] ${err.message}`);
         finish('crash', 1);
       });
       child.on('close', (code) => {

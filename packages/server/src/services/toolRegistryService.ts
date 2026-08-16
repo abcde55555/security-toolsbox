@@ -4,6 +4,12 @@ import type { ZodError } from 'zod';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
 import { CommandExecutor } from '../engine/commandExecutor.js';
+import { redactEnvVars } from './redact.js';
+
+function redactTool(t: Tool): Tool {
+  if (!t.envVars) return t;
+  return { ...t, envVars: redactEnvVars(t.envVars) };
+}
 
 function zodToValidation(err: ZodError): never {
   const msg = err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
@@ -43,7 +49,7 @@ export class ToolRegistryService {
       action: 'tool.create',
       entityType: 'tool',
       entityId: tool.id,
-      after: tool,
+      after: redactTool(tool),
     });
     this.runHealthCheck(tool.id).catch(() => {});
     return tool;
@@ -90,8 +96,8 @@ export class ToolRegistryService {
       action: 'tool.update',
       entityType: 'tool',
       entityId: id,
-      before,
-      after: updated,
+      before: redactTool(before),
+      after: redactTool(updated),
     });
     return updated;
   }
@@ -111,7 +117,7 @@ export class ToolRegistryService {
       action: 'tool.delete',
       entityType: 'tool',
       entityId: id,
-      before: tool,
+      before: redactTool(tool),
     });
   }
 

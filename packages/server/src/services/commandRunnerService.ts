@@ -212,6 +212,7 @@ export class CommandRunnerService {
         cwd: cmd.workingDir || undefined,
         env: Object.keys(env).length > 0 ? env : undefined,
         cancelToken: token,
+        collectOutput: false,
         onProgress: (p) => {
           if (p.message) {
             this.ctx.bus.emit('run:progress', { runId, message: p.message });
