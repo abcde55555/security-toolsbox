@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Template, Tool, TemplateStep, FormField } from '@en18031/shared';
 import { TemplatesApi, ToolsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { categoryLabel } from '../utils/ui';
+import { categoryLabel, failureStrategyText, versionLockText } from '../utils/ui';
 import DynamicForm from '../components/DynamicForm';
 
 const { Sider, Content } = Layout;
@@ -292,7 +292,7 @@ export default function Templates() {
                 <span>引用工具：</span>
                 {selected.toolRefs.map((r) => (
                   <Tag key={r.toolId} color="blue">
-                    {toolName(r.toolId)} <span style={{ color: '#94a3b8' }}>· {r.toolVersionLock}</span>
+                    {toolName(r.toolId)} <span style={{ color: '#94a3b8' }}>· {versionLockText[r.toolVersionLock] ?? r.toolVersionLock}</span>
                   </Tag>
                 ))}
               </Space>
@@ -309,7 +309,7 @@ export default function Templates() {
               ) : (
               <AntSteps direction="vertical" current={selected.steps.length - 1}
                 items={selected.steps.map((s) => ({
-                  title: <Space><span>{s.title}</span><Tag>{s.stepId}</Tag><Tag color={s.onFailure === 'abort' ? 'red' : 'default'}>{s.onFailure}</Tag></Space>,
+                  title: <Space><span>{s.title}</span><Tag>{s.stepId}</Tag><Tag color={s.onFailure === 'abort' ? 'red' : 'default'}>{failureStrategyText[s.onFailure] ?? s.onFailure}</Tag></Space>,
                   description: (
                     <div>
                       <Tag color="blue">{toolName(s.toolId)}</Tag>

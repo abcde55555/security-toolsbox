@@ -144,3 +144,60 @@ export function severityColor(s: string): string {
   if (s === 'low') return 'blue';
   return 'default';
 }
+
+export const severityText: Record<string, string> = {
+  high: '高',
+  middle: '中',
+  low: '低',
+};
+
+export const failureStrategyText: Record<string, string> = {
+  abort: '失败中止',
+  continue: '失败继续',
+  retry: '失败重试',
+};
+
+export const versionLockText: Record<string, string> = {
+  locked: '锁定版本',
+  follow: '跟随最新',
+};
+
+export const evidenceTypeText: Record<string, string> = {
+  stdout_line: '输出行',
+  assertion: '判定断言',
+  validation_error: '校验错误',
+  file_pointer: '文件引用',
+  screenshot: '截图',
+};
+
+export const auditActionText: Record<string, string> = {
+  'project.create': '创建项目',
+  'project.update': '更新项目',
+  'project.delete': '删除项目',
+  'template.create': '创建模板',
+  'template.update': '更新模板',
+  'template.clone': '克隆模板',
+  'template.delete': '删除模板',
+  'template.confirm_upgrade': '确认模板升级',
+  'run.start': '启动运行',
+  'run.finish': '运行结束',
+  'run.cancel': '取消运行',
+  'run.manual_tool': '手动执行工具',
+  'report.generate': '生成报告',
+  'clause.verdict.override': '人工覆盖判定',
+  'clause.verdict.invalid': '判定校验失败',
+  'tool.create': '注册工具',
+  'tool.update': '更新工具',
+  'tool.delete': '删除工具',
+  'command_run.start': '启动命令',
+  'command_run.finish': '命令结束',
+  'command_run.cancel': '取消命令',
+  'command_run.attach': '挂载到项目',
+};
+
+export const healthLegend = [
+  { status: 'green' as HealthStatus, text: healthText.green, color: healthColor.green },
+  { status: 'yellow' as HealthStatus, text: healthText.yellow, color: healthColor.yellow },
+  { status: 'red' as HealthStatus, text: healthText.red, color: healthColor.red },
+  { status: 'unknown' as HealthStatus, text: healthText.unknown, color: healthColor.unknown },
+];

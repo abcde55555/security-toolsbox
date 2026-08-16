@@ -11,7 +11,7 @@ import type { Tool, ToolCommand } from '@en18031/shared';
 import { ToolsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import {
-  categoryLabel, categoryLabels, healthColor, healthText, severityColor,
+  categoryLabel, categoryLabels, healthColor, healthText, healthLegend, severityColor, severityText,
 } from '../utils/ui';
 import RunCommandModal from '../components/RunCommandModal';
 import ToolEditorDrawer from '../components/ToolEditorDrawer';
@@ -183,10 +183,9 @@ export default function ToolLibrary() {
         </Space>
         <Space size={16} style={{ marginBottom: 16, width: '100%', color: '#64748b', fontSize: 12 }}>
           <span>健康状态：</span>
-          <span><Badge color="green" text="健康" /></span>
-          <span><Badge color="red" text="异常" /></span>
-          <span><Badge color="gold" text="告警" /></span>
-          <span><Badge color="gray" text="未配置/未知" /></span>
+          {healthLegend.map((h) => (
+            <span key={h.status}><Badge color={h.color} text={h.text} /></span>
+          ))}
         </Space>
         <Space style={{ marginBottom: 16 }}>
           <Input.Search
@@ -222,8 +221,8 @@ export default function ToolLibrary() {
               const manual = isCommandManual(t);
               return (
                 <Card key={t.id} className="tool-card" size="small" onClick={() => openDetail(t)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <Typography.Text strong ellipsis style={{ maxWidth: 190 }}>{t.name}</Typography.Text>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                    <Typography.Text strong ellipsis style={{ flex: 1, minWidth: 0 }}>{t.name}</Typography.Text>
                     <Tooltip title={healthText[t.healthStatus]}>
                       <Badge color={healthColor[t.healthStatus]} />
                     </Tooltip>
@@ -266,6 +265,12 @@ export default function ToolLibrary() {
         onClose={() => setDrawerOpen(false)}
         extra={
           <Space>
+            <Button icon={<SafetyCertificateOutlined />} loading={rechecking} onClick={() => void recheck()}>
+              执行健康检查
+            </Button>
+            {selected && !selected.builtin && (
+              <Button icon={<EditOutlined />} onClick={() => openEditor(selected)}>编辑</Button>
+            )}
             {selected && !selected.builtin && (
               <Popconfirm
                 title="删除该工具？"
@@ -276,12 +281,6 @@ export default function ToolLibrary() {
                 <Button danger icon={<DeleteOutlined />}>删除</Button>
               </Popconfirm>
             )}
-            {selected && !selected.builtin && (
-              <Button icon={<EditOutlined />} onClick={() => openEditor(selected)}>编辑</Button>
-            )}
-            <Button icon={<SafetyCertificateOutlined />} loading={rechecking} onClick={() => void recheck()}>
-              执行健康检查
-            </Button>
           </Space>
         }
       >
@@ -375,7 +374,7 @@ export default function ToolLibrary() {
                   <Card key={c.clauseId} size="small" style={{ marginBottom: 8 }}>
                     <Space>
                       <Tag>{c.clauseId}</Tag>
-                      <Tag color={severityColor(c.severity)}>{c.severity}</Tag>
+                      <Tag color={severityColor(c.severity)}>{severityText[c.severity] ?? c.severity}</Tag>
                       <span>{c.title}</span>
                     </Space>
                   </Card>

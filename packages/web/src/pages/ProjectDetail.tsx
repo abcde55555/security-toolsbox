@@ -18,7 +18,8 @@ import { useRunStream } from '../api/socket';
 import {
   runStatusColor, runStatusText, stepStatusColor, stepStatusText,
   projectStatusColor, projectStatusText,
-  gradeColor, gradeText, severityColor,
+  gradeColor, gradeText, severityColor, severityText, evidenceTypeText,
+  auditActionText,
 } from '../utils/ui';
 import CommandRunList from '../components/CommandRunList';
 import RunCommandModal from '../components/RunCommandModal';
@@ -333,10 +334,10 @@ export default function ProjectDetail() {
 
   return (
     <Content style={{ padding: 16, overflow: 'auto', height: '100%' }}>
-      <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
+      <Space wrap style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between', rowGap: 8 }}>
         <Space>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/projects')}>返回</Button>
-          <Typography.Title level={4} style={{ margin: 0 }}>{project.name}</Typography.Title>
+          <Typography.Title level={4} ellipsis style={{ margin: 0, maxWidth: 280 }}>{project.name}</Typography.Title>
           <Tag color={activeRun ? runStatusColor[activeRun.status] : projectStatusColor[project.status]}>
             {activeRun
               ? (runStatusText[activeRun.status] ?? activeRun.status)
@@ -349,8 +350,8 @@ export default function ProjectDetail() {
           <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>刷新</Button>
           <Button onClick={openVars}>变量配置</Button>
           <Cascader
-            placeholder="单独执行工具（跳过编排）…"
-            style={{ width: 260 }}
+            placeholder="单独执行工具…"
+            style={{ width: 200 }}
             value={undefined}
             onChange={(v: (string | number)[] | undefined) => {
               if (!v || v.length < 2) return;
@@ -453,10 +454,11 @@ export default function ProjectDetail() {
                 columns={[
                   { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => new Date(v).toLocaleString('zh-CN') },
                   { title: '用户', dataIndex: 'userId', width: 120 },
-                  { title: '动作', dataIndex: 'action', render: (v: string) => <Tag>{v}</Tag> },
+                  { title: '动作', dataIndex: 'action', render: (v: string) => <Tag>{auditActionText[v] ?? v}</Tag> },
                   { title: '对象', key: 'ent', render: (_, r) => <span className="mono">{r.entityType}:{r.entityId}</span> },
                   { title: 'IP', dataIndex: 'ip', width: 140 },
                 ]}
+                scroll={{ x: 720 }}
               />
             ),
           },
@@ -519,10 +521,10 @@ export default function ProjectDetail() {
                     <Space direction="vertical" size={2}>
                       <Space>
                         <Tag className={v.pass ? 'clause-pass' : 'clause-fail'} color={v.pass ? 'green' : 'red'}>
-                          {v.pass ? 'PASS' : 'FAIL'}
+                          {v.pass ? '通过' : '不通过'}
                         </Tag>
                         <span className="mono">{v.clauseId}</span>
-                        <Tag color={severityColor(v.severity)}>{v.severity}</Tag>
+                        <Tag color={severityColor(v.severity)}>{severityText[v.severity] ?? v.severity}</Tag>
                         {v.overridden && <Tag color="orange">已人工覆盖</Tag>}
                       </Space>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v.reason}</Typography.Text>
@@ -538,8 +540,8 @@ export default function ProjectDetail() {
                 {stepDetail.evidences.map((ev) => (
                   <Card key={ev.id} size="small" style={{ background: '#f8fafc' }}>
                     <Space style={{ marginBottom: 4 }}>
-                      <Tag>{ev.type}</Tag>
-                      <Tag color={severityColor(ev.severity)}>{ev.severity}</Tag>
+                      <Tag>{evidenceTypeText[ev.type] ?? ev.type}</Tag>
+                      <Tag color={severityColor(ev.severity)}>{severityText[ev.severity] ?? ev.severity}</Tag>
                     </Space>
                     <pre className="mono" style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>{ev.content}</pre>
                   </Card>
@@ -786,9 +788,10 @@ function ReportTab(props: {
                 );
               },
             },
-            { title: '严重度', key: 'sev', width: 90, render: (_, r) => (r.verdict ? <Tag color={severityColor(r.verdict.severity)}>{r.verdict.severity}</Tag> : '-') },
+            { title: '严重度', key: 'sev', width: 90, render: (_, r) => (r.verdict ? <Tag color={severityColor(r.verdict.severity)}>{severityText[r.verdict.severity] ?? r.verdict.severity}</Tag> : '-') },
             { title: '依据', key: 'reason', render: (_, r) => <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.verdict?.reason ?? '—'}</Typography.Text> },
           ]}
+          scroll={{ x: 760 }}
         />
       </Card>
     </Space>

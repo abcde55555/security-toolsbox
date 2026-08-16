@@ -107,6 +107,7 @@ export default function Projects() {
             { title: '创建时间', dataIndex: 'createdAt', render: (v: string) => new Date(v).toLocaleString('zh-CN') },
           ]}
           pagination={{ pageSize: 20 }}
+          scroll={{ x: 760 }}
         />
       )}
 

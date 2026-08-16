@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Space, Tooltip } from 'antd';
+import { Button, Space, Tooltip, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 
 export interface TerminalLine {
@@ -63,7 +63,10 @@ export default function Terminal({
 
   const copy = () => {
     const text = lines.map((l) => l.text).join('\n');
-    void navigator.clipboard?.writeText(text);
+    void navigator.clipboard?.writeText(text).then(
+      () => message.success('输出已复制'),
+      () => message.error('复制失败'),
+    );
   };
 
   return (

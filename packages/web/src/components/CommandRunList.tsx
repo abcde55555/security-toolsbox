@@ -138,7 +138,7 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
         dataSource={items}
         columns={columns}
         onRow={(r) => ({ onClick: () => setActiveId(r.id), style: { cursor: 'pointer' } })}
-        scroll={height ? { y: height } : undefined}
+        scroll={height ? { x: 820, y: height } : { x: 820 }}
         pagination={{
           current: page,
           pageSize,
