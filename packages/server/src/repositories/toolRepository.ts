@@ -39,6 +39,7 @@ export class ToolRepository {
         : undefined,
       formFields: parseJson(r.formFields, []),
       clauses: parseJson(r.clauses, []),
+      commands: parseJson(r.commands, []),
       referenceCount: Number(r.referenceCount ?? 0),
       healthStatus: r.healthStatus as HealthStatus,
       healthMessage: r.healthMessage ? String(r.healthMessage) : undefined,
@@ -56,9 +57,9 @@ export class ToolRepository {
     this.db
       .prepare(
         `INSERT INTO tools (id, workspaceId, name, type, interactionMode, version, sdkVersion, author, description,
-          tags, category, path, envVars, healthCheck, formFields, clauses, referenceCount, healthStatus, builtin, createdAt, updatedAt)
+          tags, category, path, envVars, healthCheck, formFields, clauses, commands, referenceCount, healthStatus, builtin, createdAt, updatedAt)
          VALUES (@id,@workspaceId,@name,@type,@interactionMode,@version,@sdkVersion,@author,@description,
-          @tags,@category,@path,@envVars,@healthCheck,@formFields,@clauses,0,'unknown',@builtin,@createdAt,@updatedAt)`,
+          @tags,@category,@path,@envVars,@healthCheck,@formFields,@clauses,@commands,0,'unknown',@builtin,@createdAt,@updatedAt)`,
       )
       .run({
         id,
@@ -77,6 +78,7 @@ export class ToolRepository {
         healthCheck: input.healthCheck ? toJson(input.healthCheck) : null,
         formFields: toJson(input.formFields ?? []),
         clauses: toJson(input.clauses ?? []),
+        commands: toJson(input.commands ?? []),
         builtin: input.builtin ? 1 : 0,
         createdAt: now,
         updatedAt: now,
@@ -125,6 +127,7 @@ export class ToolRepository {
         `UPDATE tools SET name=@name, type=@type, interactionMode=@interactionMode, version=@version,
           sdkVersion=@sdkVersion, author=@author, description=@description, tags=@tags, category=@category,
           path=@path, envVars=@envVars, healthCheck=@healthCheck, formFields=@formFields, clauses=@clauses,
+          commands=@commands,
           updatedAt=@updatedAt, revision=revision+1
          WHERE id=@id`,
       )
@@ -144,6 +147,7 @@ export class ToolRepository {
         healthCheck: merged.healthCheck ? toJson(merged.healthCheck) : null,
         formFields: toJson(merged.formFields),
         clauses: toJson(merged.clauses),
+        commands: toJson(merged.commands ?? []),
         updatedAt: merged.updatedAt,
       });
     return this.getById(id);

@@ -31,7 +31,12 @@ export function createInMemoryDb(): Database.Database {
   return mem;
 }
 
-const MIGRATIONS: { id: number; name: string; sql: string }[] = [
+const MIGRATIONS: {
+  id: number;
+  name: string;
+  sql: string;
+  run?: (db: Database.Database) => void;
+}[] = [
   {
     id: 1,
     name: 'initial_schema',
@@ -308,9 +313,52 @@ const MIGRATIONS: { id: number; name: string; sql: string }[] = [
     END;
     `,
   },
+  {
+    id: 3,
+    name: 'command_runs_and_tool_commands',
+    sql: `
+    CREATE TABLE IF NOT EXISTS command_runs (
+      id TEXT PRIMARY KEY,
+      workspaceId TEXT NOT NULL DEFAULT 'default',
+      toolId TEXT NOT NULL,
+      toolName TEXT NOT NULL,
+      commandId TEXT NOT NULL,
+      commandName TEXT NOT NULL,
+      projectId TEXT,
+      clauseId TEXT,
+      note TEXT,
+      params TEXT NOT NULL DEFAULT '{}',
+      resolvedCommand TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      exitCode INTEGER,
+      durationMs INTEGER,
+      stdoutFileRef TEXT,
+      stderrFileRef TEXT,
+      stdoutPreview TEXT,
+      error TEXT,
+      createdBy TEXT NOT NULL,
+      startedAt TEXT NOT NULL,
+      finishedAt TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cmd_runs_tool_created ON command_runs(toolId, createdAt);
+    CREATE INDEX IF NOT EXISTS idx_cmd_runs_project_created ON command_runs(projectId, createdAt);
+    CREATE INDEX IF NOT EXISTS idx_cmd_runs_status ON command_runs(status);
+    `,
+    run(database) {
+      const cols = (database.prepare('PRAGMA table_info(tools)').all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      if (!cols.includes('commands')) {
+        database.exec("ALTER TABLE tools ADD COLUMN commands TEXT NOT NULL DEFAULT '[]'");
+      }
+    },
+  },
 ];
 
-function runMigrations(database: Database.Database): void {
+export function runMigrations(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id INTEGER PRIMARY KEY,
@@ -325,6 +373,7 @@ function runMigrations(database: Database.Database): void {
     if (!applied.has(m.id)) {
       const tx = database.transaction(() => {
         database.exec(m.sql);
+        m.run?.(database);
         database
           .prepare('INSERT INTO _migrations (id, name, appliedAt) VALUES (?, ?, ?)')
           .run(m.id, m.name, new Date().toISOString());

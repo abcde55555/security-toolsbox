@@ -92,14 +92,14 @@ export class CommandExecutor {
         const text = chunk.toString();
         stdout += text;
         for (const line of text.split(/\r?\n/)) {
-          if (line.length > 0) opts.onProgress?.({ logLine: line });
+          if (line.length > 0) opts.onProgress?.({ logLine: line, stream: 'stdout' });
         }
       });
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         stderr += text;
         for (const line of text.split(/\r?\n/)) {
-          if (line.length > 0) opts.onProgress?.({ logLine: line });
+          if (line.length > 0) opts.onProgress?.({ logLine: line, stream: 'stderr' });
         }
       });
       child.on('error', (err) => {

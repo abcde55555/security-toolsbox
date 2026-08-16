@@ -1,6 +1,7 @@
 import { getDb } from './database.js';
 import { getRepositories } from '../repositories/index.js';
 import { SEED_CLAUSES, STANDARD_VERSION } from './clauseSeed.js';
+import { seedCommandTools } from './commandToolSeed.js';
 import { nowIso } from '@en18031/shared';
 import { logger } from '../logger.js';
 
@@ -70,6 +71,8 @@ export async function runSeed(): Promise<void> {
   } catch (e) {
     logger.warn({ err: (e as Error).message }, 'built-in modules not registered (package may not be built yet)');
   }
+
+  await seedCommandTools(repos);
 
   logger.info('seed complete');
 }

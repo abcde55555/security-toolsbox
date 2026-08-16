@@ -110,6 +110,17 @@ export type ReportFormat = (typeof REPORT_FORMATS)[number];
 export const REPORT_GRADES = ['PASS', 'CONDITIONAL_PASS', 'FAIL', 'INCOMPLETE'] as const;
 export type ReportGrade = (typeof REPORT_GRADES)[number];
 
+export const COMMAND_RUN_STATUSES = [
+  'pending',
+  'running',
+  'success',
+  'fail',
+  'timeout',
+  'crash',
+  'cancelled',
+] as const;
+export type CommandRunStatus = (typeof COMMAND_RUN_STATUSES)[number];
+
 export const TOOL_CATEGORIES = [
   'network-compliance',
   'crypto-compliance',

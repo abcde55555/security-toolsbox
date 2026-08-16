@@ -1,8 +1,20 @@
 import type { Tool, HealthStatus, ModuleConfig } from '@en18031/shared';
-import { moduleConfigSchema } from '@en18031/shared';
+import { moduleConfigSchema, toolCommandsSchema } from '@en18031/shared';
+import type { ZodError } from 'zod';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
 import { CommandExecutor } from '../engine/commandExecutor.js';
+
+function zodToValidation(err: ZodError): never {
+  const msg = err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+  throw Errors.validation(msg || '参数校验失败', err.issues);
+}
+
+function validateCommands(commands: unknown): void {
+  if (commands === undefined) return;
+  const parsed = toolCommandsSchema.safeParse(commands);
+  if (!parsed.success) zodToValidation(parsed.error);
+}
 
 export class ToolRegistryService {
   constructor(private ctx: ServiceContext) {}
@@ -18,9 +30,13 @@ export class ToolRegistryService {
   }
 
   create(input: Partial<Tool> & { name: string; type: Tool['type']; interactionMode: Tool['interactionMode']; version: string; category: Tool['category'] }): Tool {
-    if (!input.path && input.type === 'custom') {
-      throw Errors.validation('自定义工具必须提供 path');
+    if (input.builtin) {
+      throw Errors.forbidden('内置工具不可通过此接口创建');
     }
+    if (input.type === 'custom' && !input.path && (!input.commands || input.commands.length === 0)) {
+      throw Errors.validation('命令手册工具至少需要一条命令，或提供可执行 path');
+    }
+    validateCommands(input.commands);
     const tool = this.ctx.repos.tools.create({ ...input, workspaceId: 'default' });
     this.ctx.repos.audit.insert({
       userId: this.ctx.userId,
@@ -63,6 +79,10 @@ export class ToolRegistryService {
 
   update(id: string, patch: Partial<Tool>): Tool {
     const before = this.get(id);
+    if (before.builtin) {
+      throw Errors.forbidden('内置工具为只读，不可修改');
+    }
+    validateCommands(patch.commands);
     const updated = this.ctx.repos.tools.update(id, patch);
     if (!updated) throw Errors.notFound('工具', id);
     this.ctx.repos.audit.insert({
@@ -78,6 +98,9 @@ export class ToolRegistryService {
 
   delete(id: string): void {
     const tool = this.get(id);
+    if (tool.builtin) {
+      throw Errors.forbidden('内置工具为只读，不可删除');
+    }
     const refs = this.ctx.repos.tools.countReferences(id);
     if (refs > 0) {
       throw Errors.toolReferenced(`工具被 ${refs} 个模板引用，不可删除，可改为禁用`);

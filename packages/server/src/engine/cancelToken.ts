@@ -6,14 +6,11 @@ export function createCancelToken(): CancelToken & { cancel: () => void } {
     resolveFn = resolve;
   });
   let requested = false;
-  const token: CancelToken = {
+  return {
     promise,
     get isRequested() {
       return requested;
     },
-  };
-  return {
-    ...token,
     cancel: () => {
       requested = true;
       resolveFn();

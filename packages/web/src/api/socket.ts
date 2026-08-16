@@ -2,9 +2,31 @@ import { useEffect, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 export interface RunStreamEvents {
-  onLogLine?: (p: { runId: string; stepRunId?: string; stepId?: string; line: string }) => void;
-  onProgress?: (p: { runId: string; stepRunId?: string; stepId?: string; percent: number; message?: string }) => void;
-  onStatus?: (p: { runId: string; stepRunId?: string; stepId?: string; status: string; percent?: number }) => void;
+  onLogLine?: (p: {
+    runId: string;
+    stepRunId?: string;
+    stepId?: string;
+    line: string;
+    stream?: 'stdout' | 'stderr';
+  }) => void;
+  onProgress?: (p: {
+    runId: string;
+    stepRunId?: string;
+    stepId?: string;
+    percent?: number;
+    message?: string;
+  }) => void;
+  onStatus?: (p: {
+    runId: string;
+    stepRunId?: string;
+    stepId?: string;
+    status: string;
+    percent?: number;
+    exitCode?: number;
+    durationMs?: number;
+    resolvedCommand?: string;
+    message?: string;
+  }) => void;
   onBatchProgress?: (p: { runId: string; percent: number; status?: string }) => void;
 }
 

@@ -76,15 +76,48 @@ export const gradeText: Record<string, string> = {
 
 export const categoryLabels: Array<{ key: string; label: string }> = [
   { key: 'network-compliance', label: '网络合规' },
-  { key: 'web', label: 'Web 测试' },
-  { key: 'firmware', label: '固件分析' },
-  { key: 'crypto-auth', label: '密码/认证' },
-  { key: 'host', label: '主机检测' },
+  { key: 'crypto-compliance', label: '密码合规' },
+  { key: 'credential-compliance', label: '凭证合规' },
+  { key: 'firmware-analysis', label: '固件分析' },
+  { key: 'authentication', label: '认证安全' },
+  { key: 'reconnaissance', label: '侦察探测' },
   { key: 'other', label: '其他' },
 ];
 
+export const categoryOptions = categoryLabels.map((c) => ({ value: c.key, label: c.label }));
+
 export function categoryLabel(key?: string): string {
   return categoryLabels.find((c) => c.key === key)?.label ?? key ?? '其他';
+}
+
+export const commandRunStatusColor: Record<string, string> = {
+  pending: 'default',
+  running: 'processing',
+  success: 'success',
+  fail: 'error',
+  timeout: 'warning',
+  crash: 'error',
+  cancelled: 'default',
+};
+
+export const commandRunStatusText: Record<string, string> = {
+  pending: '等待中',
+  running: '运行中',
+  success: '成功',
+  fail: '失败',
+  timeout: '超时',
+  crash: '崩溃',
+  cancelled: '已取消',
+};
+
+export function formatDuration(ms?: number): string {
+  if (ms === undefined || ms === null || Number.isNaN(ms)) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 2 : 1)}s`;
+  const m = Math.floor(s / 60);
+  const rest = Math.round(s % 60);
+  return `${m}m${rest}s`;
 }
 
 export function severityColor(s: string): string {

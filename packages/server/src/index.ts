@@ -14,6 +14,7 @@ import { templateRoutes } from './routes/templates.js';
 import { projectRoutes } from './routes/projects.js';
 import { clauseRoutes } from './routes/clauses.js';
 import { reportRoutes } from './routes/reports.js';
+import { commandRunRoutes } from './routes/commandRuns.js';
 
 async function bootstrap(): Promise<void> {
   const app = Fastify({
@@ -34,6 +35,7 @@ async function bootstrap(): Promise<void> {
   await app.register(projectRoutes);
   await app.register(clauseRoutes);
   await app.register(reportRoutes);
+  await app.register(commandRunRoutes);
 
   const services = await initServices();
   try {

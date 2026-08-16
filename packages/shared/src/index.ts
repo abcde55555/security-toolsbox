@@ -20,6 +20,62 @@ export function uuid(): string {
 
 const MUSTACHE = /\{\{\s*([^}]+?)\s*\}\}/g;
 
+const PLAIN_PLACEHOLDER = /\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g;
+const SAFE_SHELL_CHARS = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+export function extractPlaceholders(tpl: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of tpl.matchAll(PLAIN_PLACEHOLDER)) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+function shellQuote(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => shellQuote(v)).filter((s) => s.length > 0).join(' ');
+  }
+  const str = String(value);
+  if (str === '') return "''";
+  if (SAFE_SHELL_CHARS.test(str)) return str;
+  return `'${str.replace(/'/g, `'\\''`)}'`;
+}
+
+export interface RenderCommandOptions {
+  quote?: boolean;
+  rawKeys?: string[];
+}
+
+export function renderCommandTemplate(
+  template: string,
+  params: Record<string, unknown>,
+  opts: RenderCommandOptions = {},
+): { command: string; missing: string[]; unused: string[] } {
+  const quote = opts.quote !== false;
+  const rawKeys = new Set(opts.rawKeys ?? []);
+  const used = new Set<string>();
+  const missing: string[] = [];
+  const command = template.replace(PLAIN_PLACEHOLDER, (_full, key: string) => {
+    used.add(key);
+    const v = params[key];
+    if (v === undefined || v === null || v === '') {
+      missing.push(key);
+      return '';
+    }
+    if (rawKeys.has(key)) return String(v);
+    return quote ? shellQuote(v) : String(v);
+  });
+  const unused = Object.keys(params).filter((k) => !used.has(k));
+  return { command, missing, unused };
+}
+
 export type VariableScope = Record<string, unknown>;
 
 export function renderTemplateString(

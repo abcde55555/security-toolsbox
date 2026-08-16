@@ -1,4 +1,5 @@
 import type {
+  CommandRunStatus,
   ComplianceLevel,
   EvidenceType,
   ExecutionStatus,
@@ -73,6 +74,22 @@ export interface ModuleClauseDecl {
   severity: Severity;
 }
 
+export interface ToolCommand {
+  id: string;
+  name: string;
+  description?: string;
+  commandTemplate: string;
+  params: FormField[];
+  rawParams?: string[];
+  outputTips?: string;
+  relatedClauses?: string[];
+  timeoutMs?: number;
+  workingDir?: string;
+  envVars?: Record<string, string>;
+  requiresRoot?: boolean;
+  platforms?: Array<'linux' | 'darwin' | 'win32'>;
+}
+
 export interface ModuleConfig {
   id: string;
   name: string;
@@ -135,6 +152,7 @@ export interface CommandProgress {
   percent?: number;
   message?: string;
   logLine?: string;
+  stream?: 'stdout' | 'stderr';
 }
 
 export interface CancelToken {
@@ -191,6 +209,7 @@ export interface Tool {
   healthCheck?: HealthCheckConfig;
   formFields: FormField[];
   clauses: ModuleClauseDecl[];
+  commands?: ToolCommand[];
   referenceCount: number;
   healthStatus: HealthStatus;
   healthMessage?: string;
@@ -412,6 +431,37 @@ export interface AuthUser {
   username: string;
   role: UserRole;
   workspaceId: string;
+}
+
+export interface CommandRun {
+  id: string;
+  workspaceId: string;
+  toolId: string;
+  toolName: string;
+  commandId: string;
+  commandName: string;
+  projectId?: string | null;
+  clauseId?: string | null;
+  note?: string;
+  params: Record<string, unknown>;
+  resolvedCommand: string;
+  status: CommandRunStatus;
+  exitCode?: number;
+  durationMs?: number;
+  stdoutFileRef?: string;
+  stderrFileRef?: string;
+  stdoutPreview?: string;
+  error?: ExecutionError;
+  createdBy: string;
+  startedAt: string;
+  finishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommandRunDetail extends CommandRun {
+  stdout: string;
+  stderr: string;
 }
 
 export const ERROR_CODES = {

@@ -3,17 +3,26 @@ import {
   Layout, Input, Select, Button, Card, Badge, Tag, Drawer, Descriptions, Space, Statistic,
   Empty, Spin, Typography, Tooltip, message,
 } from 'antd';
-import { ReloadOutlined, PlusOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import type { Tool } from '@en18031/shared';
+import {
+  ReloadOutlined, PlusOutlined, SafetyCertificateOutlined, ThunderboltOutlined,
+  CopyOutlined, AppstoreOutlined, CodeOutlined,
+} from '@ant-design/icons';
+import type { Tool, ToolCommand } from '@en18031/shared';
 import { ToolsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { categoryLabel, healthColor, healthText, severityColor } from '../utils/ui';
+import {
+  categoryLabel, categoryLabels, healthColor, healthText, severityColor,
+} from '../utils/ui';
+import RunCommandModal from '../components/RunCommandModal';
 
 const { Sider, Content } = Layout;
 
+function isCommandManual(t: Tool): boolean {
+  return t.type === 'custom' && !!t.commands && t.commands.length > 0;
+}
+
 export default function ToolLibrary() {
-  const [tools, setTools] = useState<Tool[]>([]);
-  const [total, setTotal] = useState(0);
+  const [allTools, setAllTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [type, setType] = useState<string>();
@@ -21,13 +30,13 @@ export default function ToolLibrary() {
   const [selected, setSelected] = useState<Tool | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [runCmd, setRunCmd] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await ToolsApi.list({ keyword, type, category, pageSize: 200 });
-      setTools(res.items);
-      setTotal(res.total);
+      const res = await ToolsApi.list({ pageSize: 200 });
+      setAllTools(res.items);
     } catch (e) {
       reportError(e);
     } finally {
@@ -37,20 +46,31 @@ export default function ToolLibrary() {
 
   useEffect(() => {
     void load();
-  }, [type, category]);
+  }, []);
+
+  const tools = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return allTools.filter((t) => {
+      if (type === 'module' && t.type !== 'module') return false;
+      if (type === 'custom' && t.type !== 'custom') return false;
+      if (category && t.category !== category) return false;
+      if (kw && !(`${t.name} ${t.description ?? ''} ${t.id}`.toLowerCase().includes(kw))) return false;
+      return true;
+    });
+  }, [allTools, keyword, type, category]);
 
   const stats = useMemo(() => ({
-    total,
-    modules: tools.filter((t) => t.type === 'module').length,
-    custom: tools.filter((t) => t.type === 'custom').length,
-    referenced: tools.filter((t) => t.referenceCount > 0).length,
-  }), [tools, total]);
+    total: allTools.length,
+    modules: allTools.filter((t) => t.type === 'module').length,
+    manuals: allTools.filter(isCommandManual).length,
+    referenced: allTools.filter((t) => t.referenceCount > 0).length,
+  }), [allTools]);
 
-  const categories = useMemo(() => {
+  const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const t of tools) map.set(t.category, (map.get(t.category) ?? 0) + 1);
-    return [...map.entries()].map(([key, count]) => ({ key, label: categoryLabel(key), count }));
-  }, [tools]);
+    for (const t of allTools) map.set(t.category, (map.get(t.category) ?? 0) + 1);
+    return map;
+  }, [allTools]);
 
   const openDetail = (t: Tool) => {
     setSelected(t);
@@ -73,6 +93,29 @@ export default function ToolLibrary() {
     }
   };
 
+  const copyCommand = (cmd: ToolCommand) => {
+    const defaults: Record<string, unknown> = {};
+    for (const f of cmd.params) if (f.value !== undefined) defaults[f.id] = f.value;
+    void navigator.clipboard?.writeText(cmd.commandTemplate.replace(
+      /\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g,
+      (_m, key: string) => (defaults[key] !== undefined ? String(defaults[key]) : `{{${key}}}`),
+    ));
+    message.success('命令模板已复制（含默认值）');
+  };
+
+  const refreshSelected = async () => {
+    if (runCmd) {
+      try {
+        const fresh = await ToolsApi.get(runCmd.tool.id);
+        setSelected(fresh);
+        setRunCmd((prev) => (prev ? { tool: fresh, command: prev.command } : prev));
+      } catch {
+        // ignore
+      }
+    }
+    void load();
+  };
+
   return (
     <Layout style={{ height: '100%', background: 'transparent' }}>
       <Sider width={230} theme="light" style={{ borderRight: '1px solid #eef0f4', padding: 12, overflow: 'auto' }}>
@@ -84,9 +127,9 @@ export default function ToolLibrary() {
             onClick={() => setCategory(undefined)}
             style={{ marginBottom: 6, borderColor: !category ? '#2563eb' : undefined }}
           >
-            全部工具 <Tag>{total}</Tag>
+            全部工具 <Tag>{stats.total}</Tag>
           </Card>
-          {categories.map((c) => (
+          {categoryLabels.map((c) => (
             <Card
               key={c.key}
               size="small"
@@ -94,7 +137,7 @@ export default function ToolLibrary() {
               onClick={() => setCategory(category === c.key ? undefined : c.key)}
               style={{ marginBottom: 6, borderColor: category === c.key ? '#2563eb' : undefined }}
             >
-              {c.label} <Tag>{c.count}</Tag>
+              {c.label} <Tag>{categoryCounts.get(c.key) ?? 0}</Tag>
             </Card>
           ))}
         </div>
@@ -103,7 +146,7 @@ export default function ToolLibrary() {
         <Space size={16} style={{ marginBottom: 16, width: '100%' }}>
           <Statistic title="工具总数" value={stats.total} />
           <Statistic title="内置模组" value={stats.modules} />
-          <Statistic title="自定义工具" value={stats.custom} />
+          <Statistic title="命令手册" value={stats.manuals} />
           <Statistic title="被模板引用" value={stats.referenced} />
         </Space>
         <Space style={{ marginBottom: 16 }}>
@@ -113,17 +156,17 @@ export default function ToolLibrary() {
             style={{ width: 280 }}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onSearch={() => void load()}
+            onSearch={() => { /* client-side filter */ }}
           />
           <Select
             placeholder="类型"
             allowClear
-            style={{ width: 140 }}
+            style={{ width: 150 }}
             value={type}
             onChange={setType}
             options={[
               { value: 'module', label: '内置模组' },
-              { value: 'custom', label: '自定义命令' },
+              { value: 'custom', label: '命令手册/自定义' },
             ]}
           />
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
@@ -135,35 +178,51 @@ export default function ToolLibrary() {
         ) : tools.length === 0 ? (
           <Empty description="暂无工具" />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {tools.map((t) => (
-              <Card key={t.id} className="tool-card" size="small" onClick={() => openDetail(t)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <Typography.Text strong ellipsis style={{ maxWidth: 180 }}>{t.name}</Typography.Text>
-                  <Tooltip title={healthText[t.healthStatus]}>
-                    <Badge color={healthColor[t.healthStatus]} />
-                  </Tooltip>
-                </div>
-                <div style={{ margin: '6px 0' }}>
-                  <Tag color={t.type === 'module' ? 'blue' : 'default'}>
-                    {t.type === 'module' ? '内置模组' : '自定义命令'}
-                  </Tag>
-                  <Tag>{categoryLabel(t.category)}</Tag>
-                  <Tag>v{t.version}</Tag>
-                </div>
-                <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 12 }}>
-                  {t.description ?? t.path ?? ''}
-                </Typography.Paragraph>
-                {t.referenceCount > 0 && <Tag color="green">被 {t.referenceCount} 个模板引用</Tag>}
-              </Card>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12 }}>
+            {tools.map((t) => {
+              const manual = isCommandManual(t);
+              return (
+                <Card key={t.id} className="tool-card" size="small" onClick={() => openDetail(t)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                    <Typography.Text strong ellipsis style={{ maxWidth: 190 }}>{t.name}</Typography.Text>
+                    <Tooltip title={healthText[t.healthStatus]}>
+                      <Badge color={healthColor[t.healthStatus]} />
+                    </Tooltip>
+                  </div>
+                  <div style={{ margin: '6px 0' }}>
+                    {t.type === 'module' ? (
+                      <Tag color="blue" icon={<AppstoreOutlined />}>内置模组</Tag>
+                    ) : manual ? (
+                      <Tag color="purple" icon={<CodeOutlined />}>命令手册</Tag>
+                    ) : (
+                      <Tag>自定义</Tag>
+                    )}
+                    {manual && <Tag color="geekblue">{(t.commands ?? []).length} 条命令</Tag>}
+                    <Tag>{categoryLabel(t.category)}</Tag>
+                    <Tag>v{t.version}</Tag>
+                  </div>
+                  <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 12 }}>
+                    {t.description ?? t.path ?? ''}
+                  </Typography.Paragraph>
+                  {manual && (
+                    <Space size={4} onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="small" type="link" icon={<ThunderboltOutlined />}
+                        onClick={() => setRunCmd({ tool: t, command: t.commands![0] })}
+                      >运行</Button>
+                    </Space>
+                  )}
+                  {t.referenceCount > 0 && <Tag color="green" style={{ marginTop: 4 }}>被 {t.referenceCount} 个模板引用</Tag>}
+                </Card>
+              );
+            })}
           </div>
         )}
       </Content>
 
       <Drawer
         title={selected?.name}
-        width={620}
+        width={640}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         extra={
@@ -177,7 +236,9 @@ export default function ToolLibrary() {
             <Descriptions column={2} size="small" bordered>
               <Descriptions.Item label="ID" span={2}>{selected.id}</Descriptions.Item>
               <Descriptions.Item label="版本">{selected.version}</Descriptions.Item>
-              <Descriptions.Item label="类型">{selected.type === 'module' ? '内置模组' : '自定义命令'}</Descriptions.Item>
+              <Descriptions.Item label="类型">
+                {selected.type === 'module' ? '内置模组' : isCommandManual(selected) ? '命令手册' : '自定义命令'}
+              </Descriptions.Item>
               <Descriptions.Item label="分类">{categoryLabel(selected.category)}</Descriptions.Item>
               <Descriptions.Item label="健康状态">
                 <Badge color={healthColor[selected.healthStatus]} text={healthText[selected.healthStatus]} />
@@ -195,6 +256,46 @@ export default function ToolLibrary() {
               )}
               <Descriptions.Item label="描述" span={2}>{selected.description ?? '-'}</Descriptions.Item>
             </Descriptions>
+
+            {(selected.commands ?? []).length > 0 && (
+              <>
+                <Typography.Title level={5} style={{ marginTop: 20 }}>
+                  命令 ({selected.commands!.length})
+                </Typography.Title>
+                {selected.commands!.map((c) => (
+                  <Card key={c.id} size="small" style={{ marginBottom: 10 }} bodyStyle={{ padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Space direction="vertical" size={2} style={{ flex: 1, minWidth: 0 }}>
+                        <Space>
+                          <Typography.Text strong>{c.name}</Typography.Text>
+                          {c.requiresRoot && <Tag color="red">需 root</Tag>}
+                          {c.platforms?.map((p) => <Tag key={p}>{p}</Tag>)}
+                          {c.timeoutMs && <Tag>超时 {Math.round(c.timeoutMs / 1000)}s</Tag>}
+                        </Space>
+                        <Typography.Text className="mono" style={{ fontSize: 12, color: '#334155' }}>
+                          {c.commandTemplate}
+                        </Typography.Text>
+                        {c.description && (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{c.description}</Typography.Text>
+                        )}
+                      </Space>
+                      <Space direction="vertical" size={4}>
+                        <Button
+                          size="small" type="primary" icon={<ThunderboltOutlined />}
+                          onClick={() => setRunCmd({ tool: selected, command: c })}
+                        >运行</Button>
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => copyCommand(c)}>复制</Button>
+                      </Space>
+                    </div>
+                    {c.outputTips && (
+                      <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+                        {c.outputTips}
+                      </Typography.Paragraph>
+                    )}
+                  </Card>
+                ))}
+              </>
+            )}
 
             {selected.clauses.length > 0 && (
               <>
@@ -225,7 +326,6 @@ export default function ToolLibrary() {
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                         字段: {f.id}{f.placeholder ? ` · 占位: ${f.placeholder}` : ''}
                       </Typography.Text>
-                      {f.description && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{f.description}</Typography.Text>}
                     </Space>
                   </Card>
                 ))}
@@ -234,6 +334,16 @@ export default function ToolLibrary() {
           </>
         )}
       </Drawer>
+
+      {runCmd && (
+        <RunCommandModal
+          open
+          tool={runCmd.tool}
+          command={runCmd.command}
+          onClose={() => { setRunCmd(null); void refreshSelected(); }}
+          onChanged={() => void load()}
+        />
+      )}
     </Layout>
   );
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import type { FormField } from './types.js';
 import {
+  COMMAND_RUN_STATUSES,
   COMPLIANCE_LEVELS,
   EVIDENCE_TYPES,
   EXECUTION_STATUSES,
@@ -156,6 +158,162 @@ export const moduleConfigSchema = z.object({
   path: z.string().optional(),
   envVars: z.record(z.string()).optional(),
 });
+
+export const commandRunStatusSchema = z.enum(COMMAND_RUN_STATUSES);
+
+const PLACEHOLDER_RE = /\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g;
+function placeholdersOf(tpl: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of tpl.matchAll(PLACEHOLDER_RE)) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+export const toolCommandSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    commandTemplate: z.string().min(1),
+    params: z.array(formFieldSchema),
+    rawParams: z.array(z.string().min(1)).optional(),
+    outputTips: z.string().optional(),
+    relatedClauses: z.array(z.string()).optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    workingDir: z.string().optional(),
+    envVars: z.record(z.string()).optional(),
+    requiresRoot: z.boolean().optional(),
+    platforms: z.array(z.enum(['linux', 'darwin', 'win32'])).optional(),
+  })
+  .superRefine((cmd, ctx) => {
+    const ids = new Set<string>();
+    const dupes = new Set<string>();
+    for (const p of cmd.params) {
+      if (ids.has(p.id)) dupes.add(p.id);
+      ids.add(p.id);
+    }
+    dupes.forEach((id) => {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `参数 id 重复: ${id}`,
+        path: ['params'],
+      });
+    });
+    const placeholders = placeholdersOf(cmd.commandTemplate);
+    for (const ph of placeholders) {
+      if (!ids.has(ph)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `占位符 {{${ph}}} 没有对应的参数定义`,
+          path: ['commandTemplate'],
+        });
+      }
+    }
+    const raw = cmd.rawParams ?? [];
+    for (const r of raw) {
+      if (!ids.has(r)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `rawParams 中的 "${r}" 不是已定义的参数 id`,
+          path: ['rawParams'],
+        });
+      }
+    }
+  });
+
+export const toolCommandsSchema = z.array(toolCommandSchema);
+
+export const customToolCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  name: z.string().min(1),
+  type: toolTypeSchema.default('custom'),
+  interactionMode: interactionModeSchema.default('cmd'),
+  version: z.string().min(1).default('1.0.0'),
+  category: toolCategorySchema.default('other'),
+  description: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  path: z.string().optional(),
+  envVars: z.record(z.string()).optional(),
+  healthCheck: healthCheckConfigSchema.optional(),
+  commands: toolCommandsSchema.default([]),
+});
+
+export const customToolUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  version: z.string().min(1).optional(),
+  category: toolCategorySchema.optional(),
+  description: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  path: z.string().nullable().optional(),
+  envVars: z.record(z.string()).nullable().optional(),
+  healthCheck: healthCheckConfigSchema.nullable().optional(),
+  commands: toolCommandsSchema.optional(),
+});
+
+export const commandRunStartSchema = z.object({
+  params: z.record(z.unknown()).default({}),
+  projectId: z.string().optional(),
+  clauseId: z.string().optional(),
+  note: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
+export const commandRunAttachSchema = z.object({
+  projectId: z.string().min(1),
+  clauseId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export function validateFormValues(
+  fields: FormField[],
+  values: Record<string, unknown>,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const f of fields) {
+    const v = values[f.id];
+    const isEmpty =
+      v === undefined ||
+      v === null ||
+      v === '' ||
+      (Array.isArray(v) && v.length === 0);
+    if (f.required && isEmpty) {
+      errors[f.id] = '此项必填';
+      continue;
+    }
+    if (isEmpty) continue;
+    if (typeof v === 'string' || typeof v === 'number') {
+      const fmtErr = validateFieldFormat(f.format, v);
+      if (fmtErr) {
+        errors[f.id] = fmtErr;
+        continue;
+      }
+    }
+    if (f.regex && typeof v === 'string') {
+      try {
+        if (!new RegExp(f.regex).test(v)) {
+          errors[f.id] = `格式不匹配 /${f.regex}/`;
+          continue;
+        }
+      } catch {
+        errors[f.id] = '参数正则无效';
+        continue;
+      }
+    }
+    if (typeof v === 'number' || (typeof v === 'string' && f.type === 'number' && v !== '')) {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isNaN(n)) {
+        if (f.min !== undefined && n < f.min) errors[f.id] = `不能小于 ${f.min}`;
+        if (f.max !== undefined && n > f.max) errors[f.id] = `不能大于 ${f.max}`;
+      }
+    }
+  }
+  return errors;
+}
 
 export const evidenceSchema = z.object({
   type: evidenceTypeSchema,

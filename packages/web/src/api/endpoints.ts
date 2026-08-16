@@ -96,6 +96,46 @@ export const ClausesApi = {
     api.post<{ id: string; pass: boolean; reason: string }>(`/clause-verdicts/${id}/override`, { pass, reason }),
 };
 
+export interface CommandRunDetail {
+  id: string;
+  toolId: string;
+  toolName: string;
+  commandId: string;
+  commandName: string;
+  projectId?: string | null;
+  clauseId?: string | null;
+  note?: string;
+  params: Record<string, unknown>;
+  resolvedCommand: string;
+  status: string;
+  exitCode?: number;
+  durationMs?: number;
+  stdoutPreview?: string;
+  stdout: string;
+  stderr: string;
+  error?: { code: string; message: string; stack?: string };
+  createdBy: string;
+  startedAt: string;
+  finishedAt?: string;
+  createdAt: string;
+}
+
+export const CommandRunsApi = {
+  start: (toolId: string, commandId: string, body: unknown) =>
+    api.post<{ runId: string }>(`/tools/${toolId}/commands/${commandId}/run`, body),
+  cancel: (runId: string) =>
+    api.post<{ runId: string; cancelRequested: boolean }>(`/command-runs/${runId}/cancel`),
+  list: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
+    const qs = q.toString();
+    return requestPaged<CommandRunDetail>(`GET`, `/command-runs${qs ? `?${qs}` : ''}`);
+  },
+  get: (runId: string) => api.get<CommandRunDetail>(`/command-runs/${runId}`),
+  attach: (runId: string, body: { projectId: string; clauseId?: string; note?: string }) =>
+    api.post<CommandRunDetail>(`/command-runs/${runId}/attach`, body),
+};
+
 export const ReportsApi = {
   list: (projectId: string) => api.get<Report[]>(`/projects/${projectId}/reports`),
   latest: (projectId: string) => api.get<Report | null>(`/projects/${projectId}/reports/latest`),

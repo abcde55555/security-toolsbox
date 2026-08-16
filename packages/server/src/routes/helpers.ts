@@ -1,8 +1,19 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiEnvelope, Paging } from '@en18031/shared';
+import type { ZodType, ZodError } from 'zod';
 import { AppError } from '../services/errors.js';
 import { getServices } from '../services/index.js';
 import type { UserRole } from '@en18031/shared';
+
+export function parseBody<T>(schema: ZodType<T>, body: unknown): T {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    const err = parsed.error as ZodError;
+    const msg = err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new AppError(9003, msg || '请求参数不合法', err.issues, 400);
+  }
+  return parsed.data;
+}
 
 export function ok<T>(reply: FastifyReply, data: T, paging?: Paging): void {
   const body: ApiEnvelope<T> = { code: 0, message: 'ok', data };

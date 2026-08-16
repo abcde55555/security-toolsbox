@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getServices } from '../services/index.js';
-import { ok, requireRole, handleError, pagingFromQuery } from './helpers.js';
+import { ok, requireRole, handleError, pagingFromQuery, parseBody } from './helpers.js';
+import { customToolCreateSchema, customToolUpdateSchema } from '@en18031/shared';
 
 export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/tools', { preHandler: requireRole('auditor') }, async (req, reply) => {
@@ -40,7 +41,7 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/tools', { preHandler: requireRole('admin') }, async (req, reply) => {
     try {
-      const body = req.body as Record<string, unknown>;
+      const body = parseBody(customToolCreateSchema, req.body);
       const tool = getServices().tools.create(body as never);
       ok(reply, tool);
     } catch (e) {
@@ -51,7 +52,8 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
   app.put('/api/tools/:id', { preHandler: requireRole('admin') }, async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
-      const tool = getServices().tools.update(id, req.body as never);
+      const body = parseBody(customToolUpdateSchema, req.body);
+      const tool = getServices().tools.update(id, body as never);
       ok(reply, tool);
     } catch (e) {
       handleError(reply, e);

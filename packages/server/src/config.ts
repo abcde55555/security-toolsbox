@@ -70,6 +70,7 @@ for (const dir of [
   config.logsDir,
   path.join(config.filesDir, 'evidence'),
   path.join(config.filesDir, 'tmp'),
+  path.join(config.filesDir, 'cmdruns'),
 ]) {
   fs.mkdirSync(dir, { recursive: true });
 }
