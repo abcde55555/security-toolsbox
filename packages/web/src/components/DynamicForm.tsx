@@ -102,7 +102,7 @@ function renderControl(f: FormField, value: unknown, setValue: (v: unknown) => v
       return <Switch checked={Boolean(value)} onChange={(v) => setValue(v)} />;
     case 'file':
       return (
-        <Input placeholder="文件参数请在终端本地填写" disabled value={String(value ?? '')} />
+        <Input placeholder="文件/目录绝对路径" value={String(value ?? '')} onChange={(e) => setValue(e.target.value)} />
       );
     case 'text':
     default:

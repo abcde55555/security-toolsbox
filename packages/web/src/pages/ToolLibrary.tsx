@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Layout, Input, Select, Button, Card, Badge, Tag, Drawer, Descriptions, Space, Statistic,
-  Empty, Spin, Typography, Tooltip, message, Popconfirm,
+  Empty, Spin, Typography, Tooltip, message, Popconfirm, Dropdown, Alert,
 } from 'antd';
 import {
   ReloadOutlined, PlusOutlined, SafetyCertificateOutlined, ThunderboltOutlined,
-  CopyOutlined, AppstoreOutlined, CodeOutlined, EditOutlined, DeleteOutlined,
+  CopyOutlined, AppstoreOutlined, CodeOutlined, EditOutlined, DeleteOutlined, DownOutlined,
 } from '@ant-design/icons';
 import type { Tool, ToolCommand } from '@en18031/shared';
 import { ToolsApi } from '../api/endpoints';
@@ -24,6 +24,7 @@ function isCommandManual(t: Tool): boolean {
 
 export default function ToolLibrary() {
   const [allTools, setAllTools] = useState<Tool[]>([]);
+  const [toolTotal, setToolTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [type, setType] = useState<string>();
@@ -38,8 +39,9 @@ export default function ToolLibrary() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await ToolsApi.list({ pageSize: 200 });
+      const res = await ToolsApi.list({ pageSize: 1000 });
       setAllTools(res.items);
+      setToolTotal(res.total);
     } catch (e) {
       reportError(e);
     } finally {
@@ -211,6 +213,13 @@ export default function ToolLibrary() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>注册工具</Button>
         </Space>
 
+        {toolTotal > allTools.length && (
+          <Alert
+            type="warning" showIcon style={{ margin: '12px 0' }}
+            message={`工具数量较多，仅显示最近 ${allTools.length} / ${toolTotal} 个，请使用搜索筛选。`}
+          />
+        )}
+
         {loading ? (
           <Spin />
         ) : tools.length === 0 ? (
@@ -242,14 +251,32 @@ export default function ToolLibrary() {
                   <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 12 }}>
                     {t.description ?? t.path ?? ''}
                   </Typography.Paragraph>
-                  {manual && (
-                    <Space size={4} onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="small" type="link" icon={<ThunderboltOutlined />}
-                        onClick={() => setRunCmd({ tool: t, command: t.commands![0] })}
-                      >运行</Button>
-                    </Space>
-                  )}
+                  {manual && (() => {
+                    const cmds = t.commands ?? [];
+                    if (cmds.length === 0) return null;
+                    if (cmds.length === 1) {
+                      return (
+                        <Button
+                          size="small" type="link" icon={<ThunderboltOutlined />}
+                          onClick={(e) => { e.stopPropagation(); setRunCmd({ tool: t, command: cmds[0] }); }}
+                        >运行</Button>
+                      );
+                    }
+                    return (
+                      <Dropdown
+                        menu={{
+                          items: cmds.map((c, i) => ({ key: String(i), label: c.name || c.id })),
+                          onClick: ({ key }) => setRunCmd({ tool: t, command: cmds[Number(key)] }),
+                        }}
+                        trigger={['click']}
+                      >
+                        <Button
+                          size="small" type="link" icon={<ThunderboltOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                        >运行<DownOutlined style={{ fontSize: 10, marginLeft: 4 }} /></Button>
+                      </Dropdown>
+                    );
+                  })()}
                   {t.referenceCount > 0 && <Tag color="green" style={{ marginTop: 4 }}>被 {t.referenceCount} 个模板引用</Tag>}
                 </Card>
               );

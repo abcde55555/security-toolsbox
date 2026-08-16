@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout, List, Card, Button, Tag, Space, Typography, Empty, Spin, Modal, Form, Input,
   Select, message, Steps as AntSteps, Popconfirm, Alert, Tooltip,
@@ -73,6 +73,7 @@ export default function Templates() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const [stepForms, setStepForms] = useState<StepForm[]>([]);
+  const stepSeq = useRef(1);
 
   const selected = templates.find((t) => t.id === selectedId);
 
@@ -96,11 +97,21 @@ export default function Templates() {
     void load();
   }, []);
 
+  const seedSeq = (ids: string[]) => {
+    let max = 0;
+    for (const id of ids) {
+      const m = /^step-(\d+)$/.exec(id);
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    stepSeq.current = max + 1;
+  };
+
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ concurrencyLimit: 1 });
-    setStepForms([blankStep(1)]);
+    stepSeq.current = 1;
+    setStepForms([blankStep(stepSeq.current++)]);
     setEditorOpen(true);
   };
 
@@ -111,12 +122,14 @@ export default function Templates() {
       description: t.description,
       concurrencyLimit: t.concurrencyLimit,
     });
+    seedSeq(t.steps.map((s) => s.stepId));
     setStepForms(t.steps.map((s, i) => stepFromTemplate(s, `${t.id}-${i}`)));
     setEditorOpen(true);
   };
 
   const addStep = () => {
-    setStepForms((prev) => [...prev, blankStep(prev.length + 1)]);
+    const n = stepSeq.current++;
+    setStepForms((prev) => [...prev, blankStep(n)]);
   };
 
   const updateStep = (idx: number, patch: Partial<StepForm>) => {

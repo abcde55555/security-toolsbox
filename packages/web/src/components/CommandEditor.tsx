@@ -7,7 +7,7 @@ import {
   PlusOutlined, DeleteOutlined, WarningFilled, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { ToolCommand, FormField, Clause } from '@en18031/shared';
-import { extractPlaceholders, renderCommandTemplate } from '@en18031/shared';
+import { extractPlaceholders, renderCommandTemplate, uuid } from '@en18031/shared';
 
 const { TextArea } = Input;
 
@@ -43,7 +43,7 @@ function emptyParam(id: string): FormField {
 
 function newCommand(): ToolCommand {
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     name: '',
     commandTemplate: '',
     params: [],
@@ -180,6 +180,7 @@ export default function CommandEditor({
       cancelText="取消"
       width={820}
       destroyOnClose
+      maskClosable={false}
       styles={{ body: { maxHeight: '70vh', overflow: 'auto', paddingRight: 8 } }}
     >
       <Form layout="vertical" size="small">

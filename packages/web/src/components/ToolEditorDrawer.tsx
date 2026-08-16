@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Drawer, Form, Input, InputNumber, Select, Switch, Button, Space, Typography, Tag,
   Card, Popconfirm, Alert, Divider, Row, Col, message,
@@ -7,6 +7,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { Tool, ToolCommand, Clause, HealthCheckConfig } from '@en18031/shared';
+import { uuid } from '@en18031/shared';
 import { ToolsApi, ClausesApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { categoryOptions, categoryLabel } from '../utils/ui';
@@ -20,7 +21,6 @@ interface ToolDraft {
   tags: string[];
   path?: string;
   healthCheck?: HealthCheckConfig;
-  envVars?: Record<string, string>;
   setupCommand?: string;
   commands: ToolCommand[];
 }
@@ -34,7 +34,6 @@ function blankDraft(): ToolDraft {
     tags: [],
     path: '',
     healthCheck: undefined,
-    envVars: {},
     setupCommand: '',
     commands: [],
   };
@@ -49,7 +48,6 @@ function fromTool(t: Tool): ToolDraft {
     tags: t.tags ?? [],
     path: t.path ?? '',
     healthCheck: t.healthCheck,
-    envVars: t.envVars ?? {},
     setupCommand: t.setupCommand ?? '',
     commands: (t.commands ?? []).map((c) => ({ ...c, params: c.params.map((p) => ({ ...p })) })),
   };
@@ -70,11 +68,14 @@ export default function ToolEditorDrawer({
   const [editingCommand, setEditingCommand] = useState<ToolCommand | null>(null);
   const [commandEditorOpen, setCommandEditorOpen] = useState(false);
   const [healthEnabled, setHealthEnabled] = useState(false);
+  const [envRows, setEnvRows] = useState<Array<{ id: string; key: string; value: string }>>([]);
 
   useEffect(() => {
     if (!open) return;
     setDraft(tool ? fromTool(tool) : blankDraft());
     setHealthEnabled(!!tool?.healthCheck?.command);
+    const env = tool?.envVars ?? {};
+    setEnvRows(Object.entries(env).map(([key, value]) => ({ id: uuid(), key, value })));
     void ClausesApi.list().then(setClauses).catch(() => {});
   }, [open, tool]);
 
@@ -110,26 +111,14 @@ export default function ToolEditorDrawer({
     setDraft((prev) => ({ ...prev, commands: prev.commands.filter((c) => c.id !== id) }));
   }
 
-  const envVarList = useMemo(
-    () => Object.entries(draft.envVars ?? {}).map(([key, value], i) => ({ key, value, i })),
-    [draft.envVars],
-  );
-
-  function setEnvVar(index: number, key: string, value: string) {
-    setDraft((prev) => {
-      const entries = Object.entries(prev.envVars ?? {});
-      entries[index] = [key, value];
-      return { ...prev, envVars: Object.fromEntries(entries) };
-    });
+  function setEnvVar(id: string, patch: Partial<{ key: string; value: string }>) {
+    setEnvRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
   function addEnvVar() {
-    setDraft((prev) => ({ ...prev, envVars: { ...(prev.envVars ?? {}), '': '' } }));
+    setEnvRows((prev) => [...prev, { id: uuid(), key: '', value: '' }]);
   }
-  function removeEnvVar(index: number) {
-    setDraft((prev) => {
-      const entries = Object.entries(prev.envVars ?? {}).filter((_, i) => i !== index);
-      return { ...prev, envVars: Object.fromEntries(entries) };
-    });
+  function removeEnvVar(id: string) {
+    setEnvRows((prev) => prev.filter((r) => r.id !== id));
   }
 
   const blockers: string[] = [];
@@ -148,7 +137,7 @@ export default function ToolEditorDrawer({
     setSaving(true);
     try {
       const envVars = Object.fromEntries(
-        Object.entries(draft.envVars ?? {}).filter(([k]) => k.trim() !== ''),
+        envRows.filter((r) => r.key.trim() !== '').map((r) => [r.key.trim(), r.value]),
       );
       const healthCheck = healthEnabled && draft.healthCheck?.command
         ? draft.healthCheck
@@ -193,6 +182,7 @@ export default function ToolEditorDrawer({
         open={open}
         onClose={onClose}
         destroyOnClose
+        maskClosable={false}
         extra={
           readOnly ? undefined : (
             <Space>
@@ -308,23 +298,23 @@ export default function ToolEditorDrawer({
           </Space>
 
           <Divider orientation="left" plain>环境变量（可选）</Divider>
-          {envVarList.map(({ key, value, i }) => (
-            <Space key={i} style={{ display: 'flex', marginBottom: 8 }} align="center">
+          {envRows.map((row) => (
+            <Space key={row.id} style={{ display: 'flex', marginBottom: 8 }} align="center">
               <Input
                 className="mono"
                 style={{ width: 180 }}
                 placeholder="KEY"
-                value={key}
-                onChange={(e) => setEnvVar(i, e.target.value, value)}
+                value={row.key}
+                onChange={(e) => setEnvVar(row.id, { key: e.target.value })}
               />
               <Input
                 className="mono"
                 style={{ width: 280 }}
                 placeholder="value"
-                value={value}
-                onChange={(e) => setEnvVar(i, key, e.target.value)}
+                value={row.value}
+                onChange={(e) => setEnvVar(row.id, { value: e.target.value })}
               />
-              <Button size="small" danger type="text" icon={<DeleteOutlined />} onClick={() => removeEnvVar(i)} />
+              <Button size="small" danger type="text" icon={<DeleteOutlined />} onClick={() => removeEnvVar(row.id)} />
             </Space>
           ))}
           <Button size="small" icon={<PlusOutlined />} onClick={addEnvVar} style={{ marginBottom: 12 }}>

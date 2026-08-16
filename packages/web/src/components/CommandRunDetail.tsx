@@ -30,6 +30,9 @@ export default function CommandRunDetail({
   const [clauses, setClauses] = useState<Clause[]>([]);
   const [attachProject, setAttachProject] = useState<string>();
   const [attachClause, setAttachClause] = useState<string>();
+  const [attaching, setAttaching] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
   const reconciled = useRef(false);
   const receivedSocket = useRef(false);
   const pollSeq = useRef(0);
@@ -58,11 +61,15 @@ export default function CommandRunDetail({
   }
 
   async function cancel() {
+    if (cancelling) return;
+    setCancelling(true);
     try {
       await CommandRunsApi.cancel(runId);
       await poll();
     } catch (e) {
       reportError(e);
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -102,7 +109,8 @@ export default function CommandRunDetail({
   }, [detail, buffer.lines]);
 
   async function rerun() {
-    if (!detail) return;
+    if (!detail || rerunning) return;
+    setRerunning(true);
     try {
       const { runId: rid } = await CommandRunsApi.start(detail.toolId, detail.commandId, {
         params: detail.params,
@@ -113,6 +121,8 @@ export default function CommandRunDetail({
       onRerun?.(rid);
     } catch (e) {
       reportError(e);
+    } finally {
+      setRerunning(false);
     }
   }
 
@@ -121,6 +131,8 @@ export default function CommandRunDetail({
       message.warning('请先选择项目');
       return;
     }
+    if (attaching) return;
+    setAttaching(true);
     try {
       await CommandRunsApi.attach(detail.id, {
         projectId: attachProject,
@@ -134,6 +146,8 @@ export default function CommandRunDetail({
       void poll();
     } catch (e) {
       reportError(e);
+    } finally {
+      setAttaching(false);
     }
   }
 
@@ -185,7 +199,7 @@ export default function CommandRunDetail({
         <Space>
           <Alert type="info" showIcon message="命令运行中，输出实时显示…" style={{ flex: 1 }} />
           <Popconfirm title="终止本次运行？" onConfirm={() => void cancel()} okText="终止" cancelText="取消" okButtonProps={{ danger: true }}>
-            <Button danger icon={<StopOutlined />}>终止运行</Button>
+            <Button danger icon={<StopOutlined />} loading={cancelling}>终止运行</Button>
           </Popconfirm>
         </Space>
       )}
@@ -216,7 +230,7 @@ export default function CommandRunDetail({
         <>
           <Space>
             <Popconfirm title="使用相同参数重新执行？" onConfirm={() => void rerun()} okText="重新执行" cancelText="取消">
-              <Button icon={<ReloadOutlined />}>重新执行</Button>
+              <Button icon={<ReloadOutlined />} loading={rerunning}>重新执行</Button>
             </Popconfirm>
             <Button icon={<CopyOutlined />} onClick={() => {
               void navigator.clipboard?.writeText(detail.resolvedCommand);
@@ -248,7 +262,7 @@ export default function CommandRunDetail({
                   options={clauses.map((c) => ({ value: c.clauseId, label: `${c.clauseId} ${c.title}` }))}
                 />
                 <Tooltip title="将本次运行挂到所选项目下，作为执行证据留存">
-                  <Button type="primary" ghost icon={<SaveOutlined />} onClick={() => void attach()}>保存到项目</Button>
+                  <Button type="primary" ghost icon={<SaveOutlined />} loading={attaching} onClick={() => void attach()}>保存到项目</Button>
                 </Tooltip>
               </Space>
             </>

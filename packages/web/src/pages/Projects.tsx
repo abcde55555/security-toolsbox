@@ -31,10 +31,10 @@ export default function Projects() {
       setProjects(ps);
       setTemplates(ts);
       const runs: Record<string, ProjectRun | undefined> = {};
-      await Promise.all(ps.map(async (p) => {
-        const detail = await ProjectsApi.get(p.id);
-        runs[p.id] = detail.latestRun;
-      }));
+      const results = await Promise.allSettled(ps.map((p) => ProjectsApi.get(p.id)));
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') runs[ps[i].id] = r.value.latestRun;
+      });
       setLatestRuns(runs);
     } catch (e) {
       reportError(e);
