@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type {
   CancelToken,
   CommandProgress,
@@ -32,6 +32,38 @@ function appendLimited(prev: string, chunk: string): string {
   return next.slice(next.length - MAX_BUFFER_BYTES);
 }
 
+/**
+ * Kill the whole process tree rooted at `child`. `shell: true` means `child`
+ * is a shell whose grandchild (the real command) would survive child.kill().
+ * `detached: true` makes the child a process-group leader on Unix; on Windows
+ * we use `taskkill /t` to walk the tree.
+ */
+export function killProcessTree(child: ChildProcess, force = true): void {
+  const pid = child.pid;
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(pid), '/t', force ? '/f' : ''], {
+        windowsHide: true,
+        stdio: 'ignore',
+      }).unref();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  const signal = force ? 'SIGKILL' : 'SIGTERM';
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export class CommandExecutor {
   runCommand(command: string, opts: RunCommandOptions = {}): Promise<CommandResult> {
     return new Promise((resolve) => {
@@ -40,6 +72,7 @@ export class CommandExecutor {
       const collectOutput = opts.collectOutput !== false;
       const child = spawn(command, {
         shell: true,
+        detached: process.platform !== 'win32',
         cwd: opts.cwd,
         env: { ...process.env, ...(opts.env ?? {}) },
         windowsHide: true,
@@ -48,6 +81,7 @@ export class CommandExecutor {
       let stdout = '';
       let stderr = '';
       let settled = false;
+      let closed = false;
       let timedOut = false;
       let cancelled = false;
 
@@ -55,11 +89,7 @@ export class CommandExecutor {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        try {
-          if (!child.killed) child.kill(status === 'timeout' || cancelled ? 'SIGKILL' : 'SIGTERM');
-        } catch {
-          // ignore
-        }
+        if (!closed) killProcessTree(child, status === 'timeout' || cancelled);
         if (cancelled && exitCode === 0) {
           resolve({
             status: 'cancelled',
@@ -92,11 +122,7 @@ export class CommandExecutor {
       const timer = setTimeout(() => {
         timedOut = true;
         opts.onProgress?.({ message: '命令执行超时，强制终止' });
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          // ignore
-        }
+        killProcessTree(child, true);
         finish('timeout', 124);
       }, timeoutMs);
 
@@ -119,6 +145,7 @@ export class CommandExecutor {
         finish('crash', 1);
       });
       child.on('close', (code) => {
+        closed = true;
         finish(code === 0 ? 'success' : 'fail', code ?? 1);
       });
 
@@ -130,11 +157,7 @@ export class CommandExecutor {
           opts.cancelToken.promise.then(() => {
             cancelled = true;
             opts.onProgress?.({ message: '收到取消信号，终止进程' });
-            try {
-              child.kill('SIGKILL');
-            } catch {
-              // ignore
-            }
+            killProcessTree(child, true);
             finish('cancelled', 130);
           });
         }
