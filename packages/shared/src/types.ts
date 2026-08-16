@@ -217,6 +217,7 @@ export interface Tool {
   healthCheckedAt?: string;
   builtin: boolean;
   upgradePending?: boolean;
+  revision: number;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;

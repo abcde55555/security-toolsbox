@@ -163,6 +163,7 @@ export default function ToolEditorDrawer({
           envVars: Object.keys(envVars).length > 0 ? envVars : null,
           setupCommand: draft.setupCommand?.trim() || null,
           healthCheck: healthCheck ?? null,
+          revision: tool.revision,
         });
         message.success('工具已更新');
       }

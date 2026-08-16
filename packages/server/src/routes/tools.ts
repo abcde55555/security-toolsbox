@@ -53,7 +53,8 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { id } = req.params as { id: string };
       const body = parseBody(customToolUpdateSchema, req.body);
-      const tool = getServices().tools.update(id, body as never);
+      const { revision, ...patch } = body as { revision?: number } & Record<string, unknown>;
+      const tool = getServices().tools.update(id, patch as never, revision);
       ok(reply, tool);
     } catch (e) {
       handleError(reply, e);

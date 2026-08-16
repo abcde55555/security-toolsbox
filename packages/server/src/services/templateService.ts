@@ -85,7 +85,7 @@ export class TemplateService {
     return template;
   }
 
-  update(id: string, patch: Partial<CreateTemplateInput>): Template {
+  update(id: string, patch: Partial<CreateTemplateInput>, expectedRevision?: number): Template {
     const before = this.get(id);
     if (patch.steps) validateDag(patch.steps);
     const oldRefIds = new Set(before.toolRefs.map((r) => r.toolId));
@@ -100,7 +100,7 @@ export class TemplateService {
       ...patch,
       steps: patch.steps?.map((s, i) => ({ ...s, position: i })),
       toolRefs: patch.toolRefs,
-    });
+    }, expectedRevision);
     if (!updated) throw Errors.notFound('模板', id);
     for (const refId of oldRefIds) {
       if (!newRefIds.has(refId)) this.ctx.repos.tools.incrementRefCount(refId, -1);

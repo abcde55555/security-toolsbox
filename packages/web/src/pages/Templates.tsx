@@ -208,7 +208,7 @@ export default function Templates() {
     try {
       let tpl: Template;
       if (editing) {
-        tpl = await TemplatesApi.update(editing.id, payload);
+        tpl = await TemplatesApi.update(editing.id, { ...payload, revision: editing.revision });
         message.success('模板已更新');
       } else {
         tpl = await TemplatesApi.create(payload);

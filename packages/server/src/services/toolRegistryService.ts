@@ -83,13 +83,13 @@ export class ToolRegistryService {
     return tool;
   }
 
-  update(id: string, patch: Partial<Tool>): Tool {
+  update(id: string, patch: Partial<Tool>, expectedRevision?: number): Tool {
     const before = this.get(id);
     if (before.builtin) {
       throw Errors.forbidden('内置工具为只读，不可修改');
     }
     validateCommands(patch.commands);
-    const updated = this.ctx.repos.tools.update(id, patch);
+    const updated = this.ctx.repos.tools.update(id, patch, expectedRevision);
     if (!updated) throw Errors.notFound('工具', id);
     this.ctx.repos.audit.insert({
       userId: this.ctx.userId,

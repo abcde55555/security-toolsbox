@@ -33,7 +33,8 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.put('/api/templates/:id', { preHandler: requireRole('template_manager') }, async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
-      const tpl = getServices().templates.update(id, req.body as never);
+      const { revision, ...patch } = req.body as { revision?: number } & Record<string, unknown>;
+      const tpl = getServices().templates.update(id, patch as never, revision);
       ok(reply, tpl);
     } catch (e) {
       handleError(reply, e);

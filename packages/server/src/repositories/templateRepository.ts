@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { Template, TemplateStep, TemplateToolRef, TemplateVariable } from '@en18031/shared';
 import { uuid, nowIso } from '@en18031/shared';
 import { parseJson, toJson } from './json.js';
+import { Errors } from '../services/errors.js';
 
 interface NewTemplate {
   id?: string;
@@ -182,15 +183,20 @@ export class TemplateRepository {
     };
   }
 
-  update(id: string, patch: Partial<Template> & { toolRefs?: TemplateToolRef[]; steps?: TemplateStep[] }): Template | null {
+  update(
+    id: string,
+    patch: Partial<Template> & { toolRefs?: TemplateToolRef[]; steps?: TemplateStep[] },
+    expectedRevision?: number,
+  ): Template | null {
     const existing = this.getById(id, true);
     if (!existing) return null;
     const now = nowIso();
     const tx = this.db.transaction(() => {
-      this.db
+      const info = this.db
         .prepare(
           `UPDATE templates SET name=?, description=?, icon=?, color=?, variables=?, concurrencyLimit=?,
-             parentTemplateId=?, inheritParent=?, revision=revision+1, updatedAt=? WHERE id=?`,
+             parentTemplateId=?, inheritParent=?, revision=revision+1, updatedAt=?
+             WHERE id=?${expectedRevision !== undefined ? ' AND revision=?' : ''}`,
         )
         .run(
           patch.name ?? existing.name,
@@ -203,7 +209,11 @@ export class TemplateRepository {
           patch.inheritParent ?? existing.inheritParent ? 1 : 0,
           now,
           id,
+          ...(expectedRevision !== undefined ? [expectedRevision] : []),
         );
+      if (expectedRevision !== undefined && info.changes === 0) {
+        throw Errors.conflict('该模板已被其他地方修改，请刷新后重试');
+      }
       if (patch.toolRefs) {
         this.db.prepare('DELETE FROM template_tools WHERE templateId = ?').run(id);
         for (const ref of patch.toolRefs) {

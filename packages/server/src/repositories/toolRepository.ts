@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { Tool, HealthStatus } from '@en18031/shared';
 import { uuid, nowIso } from '@en18031/shared';
 import { parseJson, toJson } from './json.js';
+import { Errors } from '../services/errors.js';
 
 export interface ToolListQuery {
   workspaceId?: string;
@@ -46,6 +47,7 @@ export class ToolRepository {
       healthMessage: r.healthMessage ? String(r.healthMessage) : undefined,
       healthCheckedAt: r.healthCheckedAt ? String(r.healthCheckedAt) : undefined,
       builtin: Boolean(r.builtin),
+      revision: Number(r.revision ?? 1),
       createdAt: String(r.createdAt),
       updatedAt: String(r.updatedAt),
       deletedAt: r.deletedAt ? String(r.deletedAt) : undefined,
@@ -120,18 +122,18 @@ export class ToolRepository {
     return { items: rows.map((r) => this.mapRow(r)), total };
   }
 
-  update(id: string, patch: Partial<Tool>): Tool | null {
+  update(id: string, patch: Partial<Tool>, expectedRevision?: number): Tool | null {
     const existing = this.getById(id, true);
     if (!existing) return null;
     const merged = { ...existing, ...patch, updatedAt: nowIso() };
-    this.db
+    const info = this.db
       .prepare(
         `UPDATE tools SET name=@name, type=@type, interactionMode=@interactionMode, version=@version,
           sdkVersion=@sdkVersion, author=@author, description=@description, tags=@tags, category=@category,
           path=@path, envVars=@envVars, setupCommand=@setupCommand, healthCheck=@healthCheck, formFields=@formFields, clauses=@clauses,
           commands=@commands,
           updatedAt=@updatedAt, revision=revision+1
-         WHERE id=@id`,
+         WHERE id=@id${expectedRevision !== undefined ? ' AND revision=@expectedRevision' : ''}`,
       )
       .run({
         id,
@@ -152,7 +154,11 @@ export class ToolRepository {
         clauses: toJson(merged.clauses),
         commands: toJson(merged.commands ?? []),
         updatedAt: merged.updatedAt,
+        ...(expectedRevision !== undefined ? { expectedRevision } : {}),
       });
+    if (expectedRevision !== undefined && info.changes === 0) {
+      throw Errors.conflict('该工具已被其他地方修改，请刷新后重试');
+    }
     return this.getById(id);
   }
 

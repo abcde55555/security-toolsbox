@@ -255,6 +255,7 @@ export const customToolUpdateSchema = z.object({
   setupCommand: z.string().max(2000).nullable().optional(),
   healthCheck: healthCheckConfigSchema.nullable().optional(),
   commands: toolCommandsSchema.optional(),
+  revision: z.number().int().nonnegative().optional(),
 });
 
 export const commandRunStartSchema = z.object({
