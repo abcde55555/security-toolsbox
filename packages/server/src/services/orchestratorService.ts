@@ -143,17 +143,136 @@ export class OrchestratorService {
     if (!project) throw Errors.notFound('项目', projectId);
     const old = this.ctx.repos.projects.getStepRun(stepRunId);
     if (!old) throw Errors.notFound('步骤执行', stepRunId);
+    if (old.projectRunId !== runId) throw Errors.validation('该步骤不属于此运行');
+    const run = this.ctx.repos.projects.getRun(runId);
+    if (!run) throw Errors.notFound('运行', runId);
+    if (activeRuns.has(runId)) {
+      throw Errors.validation('运行仍在进行中，无法重试');
+    }
+    const retryable: StepRunStatus[] = ['fail', 'timeout', 'cancelled', 'fail_abort_triggered', 'partial'];
+    if (!retryable.includes(old.status)) {
+      throw Errors.validation('只能重试失败、超时或已取消的步骤');
+    }
+    const template = this.ctx.repos.templates.getById(project.templateId);
+    if (!template) throw Errors.notFound('模板', project.templateId);
+
+    const variables = run.snapshotVariables as Record<string, unknown>;
+    const templateDefaults: Record<string, unknown> = {};
+    for (const v of template.variables) {
+      if (v.default !== undefined) templateDefaults[v.name] = v.default;
+    }
+
+    // Create a fresh attempt for the target step (retryOf preserves history).
     const newSr = this.ctx.repos.projects.createStepRun({
       projectRunId: runId,
       stepId: old.stepId,
       stepSnapshot: old.stepSnapshot,
       retryOf: old.id,
     });
-    const run = this.ctx.repos.projects.getRun(runId)!;
-    const variables = run.snapshotVariables as Record<string, unknown>;
-    void this.executeSingleStep(newSr.id, projectId, runId, old.stepSnapshot as TemplateStep, variables, {})
-      .catch((err) => logger.error({ err, stepRunId: newSr.id }, 'retry executeSingleStep rejected'));
+
+    // Reconstruct the step graph from the run's existing step snapshots.
+    const latest = this.latestStepRunMap(runId);
+    latest.set(old.stepId, newSr);
+    const steps = [...latest.values()]
+      .map((sr) => sr.stepSnapshot as TemplateStep)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    this.validateDag(steps);
+
+    // Reset every transitive dependent of the target so the scheduler reruns them.
+    const descendants = this.computeDescendants(steps, old.stepId);
+    for (const depStepId of descendants) {
+      const depSr = latest.get(depStepId);
+      if (!depSr || depSr.id === newSr.id) continue;
+      this.ctx.repos.projects.updateStepRun(depSr.id, {
+        status: 'pending',
+        startedAt: undefined,
+        finishedAt: undefined,
+        exitCode: undefined,
+        durationMs: undefined,
+        error: undefined,
+        percent: 0,
+      });
+      const reset = this.ctx.repos.projects.getStepRun(depSr.id)!;
+      latest.set(depStepId, reset);
+      this.emitStatus(projectId, runId, reset);
+    }
+    this.emitStatus(projectId, runId, newSr);
+
+    // Flip the parent run/project back to running with a new cancellable token.
+    const cancelToken = createCancelToken();
+    activeRuns.set(runId, { runId, projectId, cancelToken, status: 'running' });
+    this.ctx.repos.projects.updateRun(runId, {
+      status: 'running',
+      startedAt: run.startedAt,
+      finishedAt: undefined,
+      progressPercent: 0,
+      cancelRequested: false,
+    });
+    this.ctx.repos.projects.setStatus(projectId, 'running');
+    this.ctx.bus.emit('run:batchProgress', { projectId, runId, percent: 0, status: 'running' });
+    this.ctx.repos.audit.insert({
+      userId: this.ctx.userId,
+      action: 'run.retry_step',
+      entityType: 'project_run',
+      entityId: runId,
+      after: { stepRunId: newSr.id, stepId: old.stepId, retryOf: old.id },
+    });
+
+    void this.driveScheduler({
+      runId,
+      projectId,
+      templateId: template.id,
+      steps,
+      variables,
+      templateDefaults,
+      concurrency: template.concurrencyLimit,
+    })
+      .then(async () => {
+        try {
+          const { reportService } = await import('./reportService.js');
+          await reportService.generateReport(projectId, runId);
+        } catch (e) {
+          this.ctx.bus.emit('run:logLine', {
+            projectId,
+            runId,
+            line: `[警告] 重试后报告生成失败: ${(e as Error).message}`,
+          });
+        }
+      })
+      .catch((err) => logger.error({ err, runId }, 'retry driveScheduler rejected'));
+
     return newSr;
+  }
+
+  private latestStepRunMap(runId: string): Map<string, StepRun> {
+    const map = new Map<string, StepRun>();
+    for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
+      map.set(sr.stepId, sr);
+    }
+    return map;
+  }
+
+  private computeDescendants(steps: TemplateStep[], rootStepId: string): string[] {
+    const dependents = new Map<string, string[]>();
+    for (const s of steps) {
+      for (const dep of s.dependsOn) {
+        if (!dependents.has(dep)) dependents.set(dep, []);
+        dependents.get(dep)!.push(s.stepId);
+      }
+    }
+    const result: string[] = [];
+    const stack = [rootStepId];
+    const seen = new Set<string>();
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      for (const child of dependents.get(cur) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        result.push(child);
+        stack.push(child);
+      }
+    }
+    return result;
   }
 
   private validateDag(steps: TemplateStep[]): void {
@@ -186,12 +305,37 @@ export class OrchestratorService {
     templateDefaults: Record<string, unknown>,
     concurrency: number,
   ): Promise<void> {
-    const active = activeRuns.get(runId)!;
-    const stepRunByStepId = new Map<string, StepRun>();
-    for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
-      stepRunByStepId.set(sr.stepId, sr);
+    await this.driveScheduler({
+      runId,
+      projectId,
+      templateId,
+      steps,
+      variables,
+      templateDefaults,
+      concurrency,
+    });
+
+    try {
+      const reportService = (await import('./reportService.js')).reportService;
+      await reportService.generateReport(projectId, runId);
+    } catch (e) {
+      this.ctx.bus.emit('run:logLine', { projectId, runId, line: `[警告] 报告生成失败: ${(e as Error).message}` });
     }
-    const stepOutputs: Record<string, Record<string, unknown>> = {};
+  }
+
+  private driveScheduler(params: {
+    runId: string;
+    projectId: string;
+    templateId: string;
+    steps: TemplateStep[];
+    variables: Record<string, unknown>;
+    templateDefaults: Record<string, unknown>;
+    concurrency: number;
+  }): Promise<void> {
+    const { runId, projectId, templateId, steps, variables, concurrency } = params;
+    const active = activeRuns.get(runId)!;
+    const stepRunByStepId = this.latestStepRunMap(runId);
+    const stepOutputs = this.rebuildStepOutputs(steps, runId);
     const terminalStatuses = new Set<StepRunStatus>([
       'success',
       'fail',
@@ -208,9 +352,10 @@ export class OrchestratorService {
 
     const updateBatchProgress = (): void => {
       let weighted = 0;
-      for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
-        const step = steps.find((s) => s.stepId === sr.stepId);
-        const w = step?.weight ?? 1;
+      for (const step of steps) {
+        const sr = stepRunByStepId.get(step.stepId);
+        if (!sr) continue;
+        const w = step.weight ?? 1;
         weighted += w * sr.percent;
       }
       const rawPercent = totalWeight > 0 ? Math.round((weighted / totalWeight) * 100) : 0;
@@ -219,7 +364,7 @@ export class OrchestratorService {
       this.ctx.bus.emit('run:batchProgress', { projectId, runId, percent });
     };
 
-    await new Promise<void>((resolve) => {
+    return new Promise<void>((resolve) => {
       let settled = false;
       const done = (): void => {
         if (settled) return;
@@ -229,10 +374,10 @@ export class OrchestratorService {
       const tick = (): void => {
         if (settled) return;
         if (active.cancelToken.isRequested) {
-          for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
+          for (const sr of stepRunByStepId.values()) {
             if (!terminalStatuses.has(sr.status)) {
               this.ctx.repos.projects.updateStepRun(sr.id, { status: 'cancelled', finishedAt: nowIso() });
-              this.emitStatus(projectId, runId, sr);
+              this.emitStatus(projectId, runId, this.ctx.repos.projects.getStepRun(sr.id)!);
             }
           }
           this.ctx.repos.projects.updateRun(runId, { status: 'cancelled', finishedAt: nowIso(), progressPercent: 100 });
@@ -242,7 +387,7 @@ export class OrchestratorService {
           return;
         }
 
-        for (const sr of this.ctx.repos.projects.listStepRuns(runId)) {
+        for (const sr of this.latestStepRunMap(runId).values()) {
           stepRunByStepId.set(sr.stepId, sr);
         }
 
@@ -327,13 +472,26 @@ export class OrchestratorService {
       };
       tick();
     });
+  }
 
-    try {
-      const reportService = (await import('./reportService.js')).reportService;
-      await reportService.generateReport(projectId, runId);
-    } catch (e) {
-      this.ctx.bus.emit('run:logLine', { projectId, runId, line: `[警告] 报告生成失败: ${(e as Error).message}` });
+  private rebuildStepOutputs(
+    steps: TemplateStep[],
+    runId: string,
+  ): Record<string, Record<string, unknown>> {
+    const out: Record<string, Record<string, unknown>> = {};
+    const latest = this.latestStepRunMap(runId);
+    for (const step of steps) {
+      if (!step.exportVars) continue;
+      const sr = latest.get(step.stepId);
+      if (!sr || sr.status !== 'success' || !sr.stdoutFileRef) continue;
+      try {
+        const stdout = fs.readFileSync(sr.stdoutFileRef, 'utf8');
+        out[step.stepId] = this.extractExportVars(step, { stdout } as ExecutionResult);
+      } catch {
+        // ignore unreadable evidence; downstream steps will re-run or fail naturally
+      }
     }
+    return out;
   }
 
   private isAllDone(steps: TemplateStep[], map: Map<string, StepRun>): boolean {
@@ -345,7 +503,9 @@ export class OrchestratorService {
 
   private finishRun(runId: string, projectId: string, templateId: string): void {
     if (!activeRuns.has(runId)) return;
-    const srs = this.ctx.repos.projects.listStepRuns(runId);
+    // Only the latest attempt per step counts toward aggregate status; superseded
+    // (retried) attempts remain in history but must not flip a recovered run to fail.
+    const srs = [...this.latestStepRunMap(runId).values()];
     const hasFail = srs.some((s) => s.status === 'fail' || s.status === 'fail_abort_triggered');
     const hasTimeout = srs.some((s) => s.status === 'timeout');
     const hasPartial = srs.some((s) => s.status === 'partial');
