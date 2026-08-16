@@ -17,6 +17,7 @@ import { reportError } from '../api/client';
 import { useRunStream } from '../api/socket';
 import {
   runStatusColor, runStatusText, stepStatusColor, stepStatusText,
+  projectStatusColor, projectStatusText,
   gradeColor, gradeText, severityColor,
 } from '../utils/ui';
 import CommandRunList from '../components/CommandRunList';
@@ -25,7 +26,7 @@ import RunCommandModal from '../components/RunCommandModal';
 const { Content } = Layout;
 const { TextArea } = Input;
 
-const TERMINAL = ['pending', 'success', 'fail', 'partial', 'cancelled', 'timeout'];
+const TERMINAL = ['success', 'fail', 'partial', 'cancelled', 'timeout'];
 function isTerminal(s?: string): boolean {
   return !!s && TERMINAL.includes(s);
 }
@@ -58,6 +59,7 @@ export default function ProjectDetail() {
   const [singleRun, setSingleRun] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
   const [cmdRunsVersion, setCmdRunsVersion] = useState(0);
   const termRef = useRef<HTMLDivElement>(null);
+  const loadSeq = useRef(0);
 
   const activeRun = useMemo(
     () => runs.find((r) => r.id === activeRunId) ?? project?.latestRun,
@@ -73,41 +75,55 @@ export default function ProjectDetail() {
   }, []);
 
   const loadProject = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const p = await ProjectsApi.get(id);
+    if (loadSeq.current !== seq) return;
     setProject(p);
     if (p.templateId) {
-      TemplatesApi.get(p.templateId).then(setTemplate).catch(() => undefined);
+      const tid = p.templateId;
+      TemplatesApi.get(tid).then((t) => {
+        if (loadSeq.current === seq) setTemplate(t);
+      }).catch(() => undefined);
     }
     const rs = await ProjectsApi.listRuns(id);
+    if (loadSeq.current !== seq) return;
     setRuns(rs);
     const current = p.latestRun?.id ?? rs[0]?.id;
     setActiveRunId((prev) => prev ?? current);
     if (current) {
       const ss = await ProjectsApi.listSteps(id, current);
-      setSteps(ss);
+      if (loadSeq.current === seq) setSteps(ss);
     }
   }, [id]);
 
   const loadReport = useCallback(async () => {
+    const seq = loadSeq.current;
     setReportLoading(true);
     try {
       const latest = await ReportsApi.latest(id);
+      if (loadSeq.current !== seq) return;
       setReport(latest);
       if (latest) {
         const d = await ReportsApi.detail(id, latest.id);
-        setReportDetail(d);
+        if (loadSeq.current === seq) setReportDetail(d);
       } else {
         setReportDetail(null);
       }
     } catch (e) {
       reportError(e);
     } finally {
-      setReportLoading(false);
+      if (loadSeq.current === seq) setReportLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
     setBusy(true);
+    setActiveRunId(undefined);
+    setSteps([]);
+    setLogs([]);
+    setProgress(0);
+    setReport(null);
+    setReportDetail(null);
     loadProject().then(loadReport).catch(reportError).finally(() => setBusy(false));
     ToolsApi.list({ pageSize: 200 })
       .then((res) => setTools(res.items))
@@ -164,22 +180,41 @@ export default function ProjectDetail() {
           return prev;
         });
       }
-      if (p.status === 'success' || p.status === 'fail' || p.status === 'partial') {
-        appendLog(`运行结束：${stepStatusText[p.status] ?? p.status}`, p.status === 'success' ? 'ok' : 'err');
-      } else {
-        appendLog(`状态：${stepStatusText[p.status] ?? p.status}`, 'in');
+      // run-level status (command runs) has no stepRunId; per-step events shouldn't log "运行结束"
+      if (!p.stepRunId) {
+        if (p.status === 'success' || p.status === 'fail' || p.status === 'partial') {
+          appendLog(`运行结束：${runStatusText[p.status] ?? p.status}`, p.status === 'success' ? 'ok' : 'err');
+        } else {
+          appendLog(`状态：${runStatusText[p.status] ?? p.status}`, 'in');
+        }
       }
     },
     onBatchProgress: (p) => {
       if (typeof p.percent === 'number') setProgress(Math.max(0, Math.min(100, p.percent)));
+      if (p.status) {
+        setRuns((prev) => prev.map((r) => (r.id === p.runId
+          ? { ...r, status: p.status as ProjectRun['status'], progressPercent: p.percent ?? r.progressPercent }
+          : r)));
+        if (p.status === 'success' || p.status === 'fail' || p.status === 'partial') {
+          appendLog(`运行结束：${runStatusText[p.status] ?? p.status}`, p.status === 'success' ? 'ok' : 'err');
+        }
+      }
     },
   });
 
   useEffect(() => {
     if (!activeRunId || !running) return;
-    const t = setInterval(() => { void refreshSteps(activeRunId); }, 2500);
+    const t = setInterval(() => {
+      void refreshSteps(activeRunId);
+      // reconcile run status in case the terminal socket event was missed (fast runs / reconnect)
+      ProjectsApi.getRun(id, activeRunId).then((r) => {
+        if (isTerminal(r.status)) {
+          setRuns((prev) => prev.map((x) => (x.id === r.id ? r : x)));
+        }
+      }).catch(() => undefined);
+    }, 2500);
     return () => clearInterval(t);
-  }, [activeRunId, running, refreshSteps]);
+  }, [activeRunId, running, refreshSteps, id]);
 
   useEffect(() => {
     if (activeRun && isTerminal(activeRun.status)) {
@@ -302,8 +337,10 @@ export default function ProjectDetail() {
         <Space>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/projects')}>返回</Button>
           <Typography.Title level={4} style={{ margin: 0 }}>{project.name}</Typography.Title>
-          <Tag color={runStatusColor[activeRun?.status ?? project.status]}>
-            {runStatusText[activeRun?.status ?? project.status] ?? project.status}
+          <Tag color={activeRun ? runStatusColor[activeRun.status] : projectStatusColor[project.status]}>
+            {activeRun
+              ? (runStatusText[activeRun.status] ?? activeRun.status)
+              : (projectStatusText[project.status] ?? project.status)}
           </Tag>
           <Tag color="blue">{project.targetComplianceLevel}</Tag>
           <Tag>{template?.name ?? project.templateId}</Tag>
