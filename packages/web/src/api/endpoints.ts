@@ -32,8 +32,8 @@ export const ToolsApi = {
     return requestPaged<Tool>(`GET`, `/tools${qs ? `?${qs}` : ''}`);
   },
   get: (id: string) => api.get<Tool>(`/tools/${id}`),
-  create: (body: Partial<Tool>) => api.post<Tool>('/tools', body),
-  update: (id: string, body: Partial<Tool>) => api.put<Tool>(`/tools/${id}`, body),
+  create: (body: Record<string, unknown>) => api.post<Tool>('/tools', body),
+  update: (id: string, body: Record<string, unknown>) => api.put<Tool>(`/tools/${id}`, body),
   remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/tools/${id}`),
   healthCheck: (id: string) => api.post<{ id: string; healthStatus: string }>(`/tools/${id}/health-check`),
   references: (id: string) => api.get<unknown[]>(`/tools/${id}/references`),

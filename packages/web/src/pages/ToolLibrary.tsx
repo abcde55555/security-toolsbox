@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Layout, Input, Select, Button, Card, Badge, Tag, Drawer, Descriptions, Space, Statistic,
-  Empty, Spin, Typography, Tooltip, message,
+  Empty, Spin, Typography, Tooltip, message, Popconfirm,
 } from 'antd';
 import {
   ReloadOutlined, PlusOutlined, SafetyCertificateOutlined, ThunderboltOutlined,
-  CopyOutlined, AppstoreOutlined, CodeOutlined,
+  CopyOutlined, AppstoreOutlined, CodeOutlined, EditOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import type { Tool, ToolCommand } from '@en18031/shared';
 import { ToolsApi } from '../api/endpoints';
@@ -14,6 +14,7 @@ import {
   categoryLabel, categoryLabels, healthColor, healthText, severityColor,
 } from '../utils/ui';
 import RunCommandModal from '../components/RunCommandModal';
+import ToolEditorDrawer from '../components/ToolEditorDrawer';
 
 const { Sider, Content } = Layout;
 
@@ -31,6 +32,8 @@ export default function ToolLibrary() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rechecking, setRechecking] = useState(false);
   const [runCmd, setRunCmd] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<Tool | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -90,6 +93,35 @@ export default function ToolLibrary() {
       reportError(e);
     } finally {
       setRechecking(false);
+    }
+  };
+
+  const openEditor = (t: Tool | null) => {
+    setEditingTool(t);
+    setEditorOpen(true);
+  };
+
+  const deleteTool = async (t: Tool) => {
+    try {
+      await ToolsApi.remove(t.id);
+      message.success('工具已删除');
+      setDrawerOpen(false);
+      setSelected(null);
+      void load();
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
+  const deleteCommand = async (t: Tool, commandId: string) => {
+    try {
+      await ToolsApi.update(t.id, { commands: (t.commands ?? []).filter((c) => c.id !== commandId) });
+      message.success('命令已删除');
+      const fresh = await ToolsApi.get(t.id);
+      setSelected(fresh);
+      void load();
+    } catch (e) {
+      reportError(e);
     }
   };
 
@@ -170,7 +202,7 @@ export default function ToolLibrary() {
             ]}
           />
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
-          <Button type="primary" icon={<PlusOutlined />} disabled>注册工具</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>注册工具</Button>
         </Space>
 
         {loading ? (
@@ -226,9 +258,24 @@ export default function ToolLibrary() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         extra={
-          <Button icon={<SafetyCertificateOutlined />} loading={rechecking} onClick={() => void recheck()}>
-            执行健康检查
-          </Button>
+          <Space>
+            {selected && !selected.builtin && (
+              <Popconfirm
+                title="删除该工具？"
+                description="工具下的命令会一并删除，运行历史记录保留。"
+                okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
+                onConfirm={() => void deleteTool(selected)}
+              >
+                <Button danger icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            )}
+            {selected && !selected.builtin && (
+              <Button icon={<EditOutlined />} onClick={() => openEditor(selected)}>编辑</Button>
+            )}
+            <Button icon={<SafetyCertificateOutlined />} loading={rechecking} onClick={() => void recheck()}>
+              执行健康检查
+            </Button>
+          </Space>
         }
       >
         {selected && (
@@ -285,6 +332,18 @@ export default function ToolLibrary() {
                           onClick={() => setRunCmd({ tool: selected, command: c })}
                         >运行</Button>
                         <Button size="small" icon={<CopyOutlined />} onClick={() => copyCommand(c)}>复制</Button>
+                        {!selected.builtin && (
+                          <>
+                            <Button size="small" icon={<EditOutlined />} onClick={() => openEditor(selected)}>编辑</Button>
+                            <Popconfirm
+                              title="删除这条命令？"
+                              onConfirm={() => void deleteCommand(selected, c.id)}
+                              okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
+                            >
+                              <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                            </Popconfirm>
+                          </>
+                        )}
                       </Space>
                     </div>
                     {c.outputTips && (
@@ -294,6 +353,11 @@ export default function ToolLibrary() {
                     )}
                   </Card>
                 ))}
+                {!selected.builtin && (
+                  <Button type="dashed" icon={<PlusOutlined />} block onClick={() => openEditor(selected)}>
+                    新增命令
+                  </Button>
+                )}
               </>
             )}
 
@@ -344,6 +408,24 @@ export default function ToolLibrary() {
           onChanged={() => void load()}
         />
       )}
+
+      <ToolEditorDrawer
+        open={editorOpen}
+        tool={editingTool}
+        onClose={() => { setEditorOpen(false); setEditingTool(null); }}
+        onSaved={() => {
+          setEditorOpen(false);
+          setEditingTool(null);
+          void load().then(async () => {
+            if (editingTool) {
+              try {
+                const fresh = await ToolsApi.get(editingTool.id);
+                setSelected(fresh);
+              } catch { /* ignore */ }
+            }
+          });
+        }}
+      />
     </Layout>
   );
 }
