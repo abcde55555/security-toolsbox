@@ -11,6 +11,7 @@ export interface TerminalLine {
 
 export function useLogBuffer(cap = 2000) {
   const [lines, setLines] = useState<TerminalLine[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const seq = useRef(0);
 
   const append = useCallback(
@@ -23,7 +24,11 @@ export function useLogBuffer(cap = 2000) {
           seq.current += 1;
           next.push({ key: String(seq.current), text: p, kind, stream });
         }
-        return next.length > cap ? next.slice(next.length - cap) : next;
+        if (next.length > cap) {
+          setTruncated(true);
+          return next.slice(next.length - cap);
+        }
+        return next;
       });
     },
     [cap],
@@ -31,10 +36,17 @@ export function useLogBuffer(cap = 2000) {
 
   const reset = useCallback(() => {
     seq.current = 0;
+    setTruncated(false);
     setLines([]);
   }, []);
 
-  return { lines, append, reset, setLines };
+  const replace = useCallback((next: TerminalLine[]) => {
+    seq.current = next.length;
+    setTruncated(next.length > cap);
+    setLines(next.length > cap ? next.slice(next.length - cap) : next);
+  }, [cap]);
+
+  return { lines, truncated, append, reset, setLines: replace };
 }
 
 function kindOf(line: TerminalLine): string {
@@ -48,17 +60,26 @@ export default function Terminal({
   height,
   empty = '暂无输出',
   extra,
+  truncated = false,
 }: {
   lines: TerminalLine[];
   height?: number | string;
   empty?: string;
   extra?: React.ReactNode;
+  truncated?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+
+  const onScroll = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
   const copy = () => {
@@ -81,7 +102,12 @@ export default function Terminal({
           </Tooltip>
         </Space>
       </div>
-      <div ref={ref} className="terminal" style={height !== undefined ? { height } : undefined}>
+      {truncated && (
+        <div style={{ color: '#d97706', fontSize: 12, marginBottom: 4 }}>
+          输出过长，仅保留最近的 {lines.length} 行
+        </div>
+      )}
+      <div ref={ref} className="terminal" onScroll={onScroll} style={height !== undefined ? { height } : undefined}>
         {lines.length === 0 ? (
           <span style={{ color: '#64748b' }}>{empty}</span>
         ) : (

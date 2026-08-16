@@ -60,6 +60,7 @@ export default function ProjectDetail() {
   const [singleRun, setSingleRun] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
   const [cmdRunsVersion, setCmdRunsVersion] = useState(0);
   const termRef = useRef<HTMLDivElement>(null);
+  const termStick = useRef(true);
   const loadSeq = useRef(0);
 
   const activeRun = useMemo(
@@ -155,7 +156,7 @@ export default function ProjectDetail() {
   }, [id]);
 
   useRunStream(activeRunId, {
-    onLogLine: (p) => appendLog(p.line, /err|fail|error/i.test(p.line) ? 'err' : 'in'),
+    onLogLine: (p) => appendLog(p.line, p.stream === 'stderr' ? 'err' : 'in'),
     onProgress: (p) => {
       if (typeof p.percent === 'number') setProgress(Math.max(0, Math.min(100, p.percent)));
       if (p.message) appendLog(p.message, 'in');
@@ -235,8 +236,15 @@ export default function ProjectDetail() {
       .catch(reportError);
   }, [tab, auditPage, id, runs.length]);
 
+  const onTermScroll = useCallback(() => {
+    const el = termRef.current;
+    if (!el) return;
+    termStick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+  }, []);
+
   useEffect(() => {
-    if (tab === 'term' && termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
+    const el = termRef.current;
+    if (tab === 'term' && el && termStick.current) el.scrollTop = el.scrollHeight;
   }, [logs, tab]);
 
   const startRun = async () => {
@@ -420,7 +428,14 @@ export default function ProjectDetail() {
                 onRetry={(sid) => void retryStep(sid)}
                 activeRunId={activeRunId}
                 runs={runs}
-                onSelectRun={(rid) => { setActiveRunId(rid); void refreshSteps(rid); }}
+                onSelectRun={(rid) => {
+                  if (rid !== activeRunId) {
+                    setLogs([]);
+                    setProgress(0);
+                  }
+                  setActiveRunId(rid);
+                  void refreshSteps(rid);
+                }}
               />
             ),
           },
@@ -429,7 +444,7 @@ export default function ProjectDetail() {
             key: 'term',
             label: '终端',
             children: (
-              <div ref={termRef} className="terminal" style={{ height: 'calc(100vh - 220px)' }}>
+              <div ref={termRef} className="terminal" onScroll={onTermScroll} style={{ height: 'calc(100vh - 220px)' }}>
                 {logs.length === 0 ? <span style={{ color: '#64748b' }}>暂无日志输出，点击「开始测试」启动运行。</span>
                   : logs.map((l, i) => (
                     <div key={i} className={`log-${l.kind}`}>[{l.ts}] {l.text}</div>

@@ -53,6 +53,7 @@ export default function RunCommandModal({
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [clauses, setClauses] = useState<Array<{ clauseId: string; title: string }>>([]);
   const reconciled = useRef(false);
+  const receivedSocket = useRef(false);
   const buffer = useLogBuffer(3000);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function RunCommandModal({
       setRunId(undefined);
       setDetail(null);
       reconciled.current = false;
+      receivedSocket.current = false;
       buffer.reset();
     }
   }, [command?.id, open]);
@@ -81,7 +83,10 @@ export default function RunCommandModal({
   const finished = !!detail && TERMINAL.has(detail.status);
 
   useRunStream(runId, {
-    onLogLine: (p) => buffer.append(p.line, undefined, p.stream),
+    onLogLine: (p) => {
+      receivedSocket.current = true;
+      buffer.append(p.line, undefined, p.stream);
+    },
     onStatus: (p) => {
       if (TERMINAL.has(p.status)) void pollOnce();
     },
@@ -102,9 +107,16 @@ export default function RunCommandModal({
     try {
       const d = await CommandRunsApi.get(runId);
       setDetail(d);
-      if (TERMINAL.has(d.status) && !reconciled.current) {
-        reconciled.current = true;
-        buffer.setLines([...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')]);
+      if (TERMINAL.has(d.status)) {
+        if (!reconciled.current) {
+          reconciled.current = true;
+          buffer.setLines([...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')]);
+        }
+      } else if (!receivedSocket.current && buffer.lines.length === 0) {
+        // Socket has not delivered anything yet (fast command / late subscribe);
+        // backfill from polled output. Once a socket line arrives we stop to avoid dupes.
+        const seed = [...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')];
+        if (seed.length > 0) buffer.setLines(seed);
       }
     } catch {
       // ignore transient poll errors
@@ -137,6 +149,7 @@ export default function RunCommandModal({
       setRunId(rid);
       buffer.reset();
       reconciled.current = false;
+      receivedSocket.current = false;
       void pollOnce();
     } catch (e) {
       reportError(e);
@@ -293,7 +306,7 @@ export default function RunCommandModal({
                   description={detail?.error?.message} style={{ marginBottom: 10 }} />
               )}
 
-              <Terminal lines={buffer.lines} height={300} empty="命令运行中，输出将实时显示…" />
+              <Terminal lines={buffer.lines} truncated={buffer.truncated} height={300} empty="命令运行中，输出将实时显示…" />
 
               {finished && detail?.projectId ? (
                 <Alert

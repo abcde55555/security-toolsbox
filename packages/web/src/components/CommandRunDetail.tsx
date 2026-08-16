@@ -31,6 +31,7 @@ export default function CommandRunDetail({
   const [attachProject, setAttachProject] = useState<string>();
   const [attachClause, setAttachClause] = useState<string>();
   const reconciled = useRef(false);
+  const receivedSocket = useRef(false);
   const pollSeq = useRef(0);
   const buffer = useLogBuffer(3000);
 
@@ -42,9 +43,14 @@ export default function CommandRunDetail({
       const d = await CommandRunsApi.get(runId);
       if (seq !== pollSeq.current) return; // a newer runId / poll superseded this response
       setDetail(d);
-      if (TERMINAL.has(d.status) && !reconciled.current) {
-        reconciled.current = true;
-        buffer.setLines([...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')]);
+      if (TERMINAL.has(d.status)) {
+        if (!reconciled.current) {
+          reconciled.current = true;
+          buffer.setLines([...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')]);
+        }
+      } else if (!receivedSocket.current && buffer.lines.length === 0) {
+        const seed = [...toLines(d.stdout, 'stdout'), ...toLines(d.stderr, 'stderr')];
+        if (seed.length > 0) buffer.setLines(seed);
       }
     } catch {
       // ignore transient errors
@@ -64,6 +70,7 @@ export default function CommandRunDetail({
     pollSeq.current++;
     setDetail(null);
     reconciled.current = false;
+    receivedSocket.current = false;
     buffer.reset();
     void poll();
     void ProjectsApi.list().then((ps) => setProjects(ps.map((p) => ({ id: p.id, name: p.name })))).catch(() => {});
@@ -71,7 +78,10 @@ export default function CommandRunDetail({
   }, [runId]);
 
   useRunStream(running ? runId : undefined, {
-    onLogLine: (p) => buffer.append(p.line, undefined, p.stream),
+    onLogLine: (p) => {
+      receivedSocket.current = true;
+      buffer.append(p.line, undefined, p.stream);
+    },
     onStatus: () => { void poll(); },
   });
 
@@ -192,13 +202,13 @@ export default function CommandRunDetail({
 
       <div>
         <Typography.Text strong style={{ fontSize: 13 }}>stdout</Typography.Text>
-        <Terminal lines={stdoutLines} height={240} empty="无标准输出" />
+        <Terminal lines={stdoutLines} truncated={buffer.truncated} height={240} empty="无标准输出" />
       </div>
 
       {stderrLines.length > 0 && (
         <div>
           <Typography.Text strong style={{ fontSize: 13, color: '#dc2626' }}>stderr</Typography.Text>
-          <Terminal lines={stderrLines} height={140} empty="无标准错误" />
+          <Terminal lines={stderrLines} truncated={buffer.truncated} height={140} empty="无标准错误" />
         </div>
       )}
 
