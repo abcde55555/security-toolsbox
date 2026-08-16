@@ -65,10 +65,11 @@ export function renderCommandTemplate(
   const command = template.replace(PLAIN_PLACEHOLDER, (_full, key: string) => {
     used.add(key);
     const v = params[key];
-    if (v === undefined || v === null || v === '') {
+    if (v === undefined || v === null) {
       missing.push(key);
       return '';
     }
+    if (v === false || v === '') return '';
     if (rawKeys.has(key)) return String(v);
     return quote ? shellQuote(v) : String(v);
   });

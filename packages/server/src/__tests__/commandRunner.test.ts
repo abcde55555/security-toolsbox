@@ -88,7 +88,7 @@ describe('CommandRunnerService', () => {
     close();
   });
 
-  it('rejects an unresolved placeholder (non-required empty param) with 9003', () => {
+  it('accepts a non-required empty param by omitting the placeholder', async () => {
     const { repos, ctx, close } = makeContext();
     const tool = makeTool(repos, [
       {
@@ -99,7 +99,10 @@ describe('CommandRunnerService', () => {
       },
     ]);
     const runner = new CommandRunnerService(ctx);
-    expect(() => runner.start(tool.id, 'x', { params: {} })).toThrow(/占位符/);
+    const { runId } = runner.start(tool.id, 'x', { params: {} });
+    const finished = await runner.waitFor(runId);
+    expect(finished.status).toBe('success');
+    expect(finished.resolvedCommand).not.toContain('{{name}}');
     close();
   });
 

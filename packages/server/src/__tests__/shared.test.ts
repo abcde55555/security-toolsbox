@@ -47,6 +47,18 @@ describe('renderCommandTemplate', () => {
     });
     expect(r.command).toBe("cmd true 'a b' c");
   });
+
+  it('omits false booleans and empty strings instead of rendering false/quotes', () => {
+    const r = renderCommandTemplate('nmap {{sV}} {{target}} {{extra}}', {
+      sV: false,
+      target: '127.0.0.1',
+      extra: '',
+    });
+    expect(r.command).toContain('127.0.0.1');
+    expect(r.command).not.toContain('false');
+    expect(r.command).not.toContain("''");
+    expect(r.missing).toEqual([]);
+  });
 });
 
 describe('extractPlaceholders', () => {
