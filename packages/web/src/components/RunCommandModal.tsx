@@ -228,6 +228,9 @@ export default function RunCommandModal({
                 {preview.missing.length > 0 && (
                   <Tag color="red" style={{ marginTop: 6 }}>未填参数: {preview.missing.join(', ')}</Tag>
                 )}
+                {preview.unused.length > 0 && (
+                  <Tag color="orange" style={{ marginTop: 6 }}>未使用参数: {preview.unused.join(', ')}</Tag>
+                )}
               </div>
               {command.outputTips && (
                 <Alert type="info" showIcon message="如何判读输出" description={command.outputTips} style={{ marginTop: 8 }} />

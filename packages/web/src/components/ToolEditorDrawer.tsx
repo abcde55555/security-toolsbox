@@ -4,7 +4,7 @@ import {
   Card, Popconfirm, Alert, Divider, Row, Col, message,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, SafetyCertificateOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { Tool, ToolCommand, Clause, HealthCheckConfig } from '@en18031/shared';
 import { ToolsApi, ClausesApi } from '../api/endpoints';
@@ -348,7 +348,6 @@ export default function ToolEditorDrawer({
                 </Space>
                 {!readOnly && (
                   <Space direction="vertical" size={4}>
-                    <Button size="small" icon={<ThunderboltOutlined />} disabled onClick={() => {}}>运行</Button>
                     <Button size="small" icon={<EditOutlined />} onClick={() => openEditCommand(c)}>编辑</Button>
                     <Popconfirm
                       title="删除这条命令？"
