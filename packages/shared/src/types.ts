@@ -206,6 +206,7 @@ export interface Tool {
   category: ToolCategory;
   path?: string;
   envVars?: Record<string, string>;
+  setupCommand?: string;
   healthCheck?: HealthCheckConfig;
   formFields: FormField[];
   clauses: ModuleClauseDecl[];

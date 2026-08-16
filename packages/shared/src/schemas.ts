@@ -239,6 +239,7 @@ export const customToolCreateSchema = z.object({
   tags: z.array(z.string()).default([]),
   path: z.string().optional(),
   envVars: z.record(z.string()).optional(),
+  setupCommand: z.string().max(2000).optional(),
   healthCheck: healthCheckConfigSchema.optional(),
   commands: toolCommandsSchema.default([]),
 });
@@ -251,6 +252,7 @@ export const customToolUpdateSchema = z.object({
   tags: z.array(z.string()).optional(),
   path: z.string().nullable().optional(),
   envVars: z.record(z.string()).nullable().optional(),
+  setupCommand: z.string().max(2000).nullable().optional(),
   healthCheck: healthCheckConfigSchema.nullable().optional(),
   commands: toolCommandsSchema.optional(),
 });

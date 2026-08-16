@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CommandRun, CommandRunDetail, ExecutionError, ToolCommand } from '@en18031/shared';
+import type { CommandRun, CommandRunDetail, ExecutionError, Tool, ToolCommand } from '@en18031/shared';
 import {
   renderCommandTemplate,
   validateFormValues,
@@ -139,7 +139,7 @@ export class CommandRunnerService {
     });
 
     const token = createCancelToken();
-    const promise = this.execute(run.id, cmd, body.timeoutMs, token);
+    const promise = this.execute(run.id, tool, cmd, body.timeoutMs, token);
     this.active.set(run.id, { token, promise });
 
     return { runId: run.id, run };
@@ -147,6 +147,7 @@ export class CommandRunnerService {
 
   private async execute(
     runId: string,
+    tool: Tool,
     cmd: ToolCommand,
     overrideTimeoutMs: number | undefined,
     token: ReturnType<typeof createCancelToken>,
@@ -170,8 +171,12 @@ export class CommandRunnerService {
     try {
       emitStatus('running', { resolvedCommand: existing?.resolvedCommand });
 
-      const env = { ...(cmd.envVars ?? {}) };
-      const result = await this.ctx.engine.commandExecutor.runCommand(existing!.resolvedCommand, {
+      const env = { ...(tool.envVars ?? {}), ...(cmd.envVars ?? {}) };
+      const setup = (tool.setupCommand ?? '').trim();
+      const fullCommand = setup
+        ? `${setup} && ${existing!.resolvedCommand}`
+        : existing!.resolvedCommand;
+      const result = await this.ctx.engine.commandExecutor.runCommand(fullCommand, {
         timeoutMs,
         cwd: cmd.workingDir || undefined,
         env: Object.keys(env).length > 0 ? env : undefined,

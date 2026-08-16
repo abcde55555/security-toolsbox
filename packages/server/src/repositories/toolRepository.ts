@@ -34,6 +34,7 @@ export class ToolRepository {
       category: r.category as Tool['category'],
       path: r.path ? String(r.path) : undefined,
       envVars: r.envVars ? parseJson<Record<string, string>>(r.envVars, {}) : undefined,
+      setupCommand: r.setupCommand ? String(r.setupCommand) : undefined,
       healthCheck: r.healthCheck
         ? parseJson<{ command: string; timeoutMs?: number }>(r.healthCheck, { command: '' })
         : undefined,
@@ -57,9 +58,9 @@ export class ToolRepository {
     this.db
       .prepare(
         `INSERT INTO tools (id, workspaceId, name, type, interactionMode, version, sdkVersion, author, description,
-          tags, category, path, envVars, healthCheck, formFields, clauses, commands, referenceCount, healthStatus, builtin, createdAt, updatedAt)
+          tags, category, path, envVars, setupCommand, healthCheck, formFields, clauses, commands, referenceCount, healthStatus, builtin, createdAt, updatedAt)
          VALUES (@id,@workspaceId,@name,@type,@interactionMode,@version,@sdkVersion,@author,@description,
-          @tags,@category,@path,@envVars,@healthCheck,@formFields,@clauses,@commands,0,'unknown',@builtin,@createdAt,@updatedAt)`,
+          @tags,@category,@path,@envVars,@setupCommand,@healthCheck,@formFields,@clauses,@commands,0,'unknown',@builtin,@createdAt,@updatedAt)`,
       )
       .run({
         id,
@@ -75,6 +76,7 @@ export class ToolRepository {
         category: input.category,
         path: input.path ?? null,
         envVars: input.envVars ? toJson(input.envVars) : null,
+        setupCommand: input.setupCommand ? input.setupCommand : null,
         healthCheck: input.healthCheck ? toJson(input.healthCheck) : null,
         formFields: toJson(input.formFields ?? []),
         clauses: toJson(input.clauses ?? []),
@@ -126,7 +128,7 @@ export class ToolRepository {
       .prepare(
         `UPDATE tools SET name=@name, type=@type, interactionMode=@interactionMode, version=@version,
           sdkVersion=@sdkVersion, author=@author, description=@description, tags=@tags, category=@category,
-          path=@path, envVars=@envVars, healthCheck=@healthCheck, formFields=@formFields, clauses=@clauses,
+          path=@path, envVars=@envVars, setupCommand=@setupCommand, healthCheck=@healthCheck, formFields=@formFields, clauses=@clauses,
           commands=@commands,
           updatedAt=@updatedAt, revision=revision+1
          WHERE id=@id`,
@@ -144,6 +146,7 @@ export class ToolRepository {
         category: merged.category,
         path: merged.path ?? null,
         envVars: merged.envVars ? toJson(merged.envVars) : null,
+        setupCommand: merged.setupCommand ?? null,
         healthCheck: merged.healthCheck ? toJson(merged.healthCheck) : null,
         formFields: toJson(merged.formFields),
         clauses: toJson(merged.clauses),

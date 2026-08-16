@@ -356,6 +356,19 @@ const MIGRATIONS: {
       }
     },
   },
+  {
+    id: 4,
+    name: 'tool_setup_command',
+    sql: ``,
+    run(database) {
+      const cols = (database.prepare('PRAGMA table_info(tools)').all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      if (!cols.includes('setupCommand')) {
+        database.exec('ALTER TABLE tools ADD COLUMN setupCommand TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

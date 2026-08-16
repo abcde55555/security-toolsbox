@@ -299,6 +299,11 @@ export default function ToolLibrary() {
               <Descriptions.Item label="引用数">{selected.referenceCount}</Descriptions.Item>
               <Descriptions.Item label="SDK 版本">{selected.sdkVersion ?? '-'}</Descriptions.Item>
               {selected.path && <Descriptions.Item label="路径" span={2}>{selected.path}</Descriptions.Item>}
+              {selected.setupCommand && (
+                <Descriptions.Item label="环境激活命令" span={2}>
+                  <Typography.Text className="mono" style={{ fontSize: 12 }}>{selected.setupCommand}</Typography.Text>
+                </Descriptions.Item>
+              )}
               {selected.healthCheck?.command && (
                 <Descriptions.Item label="健康检查命令" span={2} className="mono">
                   {selected.healthCheck.command}

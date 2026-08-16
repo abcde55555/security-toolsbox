@@ -21,6 +21,7 @@ interface ToolDraft {
   path?: string;
   healthCheck?: HealthCheckConfig;
   envVars?: Record<string, string>;
+  setupCommand?: string;
   commands: ToolCommand[];
 }
 
@@ -34,6 +35,7 @@ function blankDraft(): ToolDraft {
     path: '',
     healthCheck: undefined,
     envVars: {},
+    setupCommand: '',
     commands: [],
   };
 }
@@ -48,6 +50,7 @@ function fromTool(t: Tool): ToolDraft {
     path: t.path ?? '',
     healthCheck: t.healthCheck,
     envVars: t.envVars ?? {},
+    setupCommand: t.setupCommand ?? '',
     commands: (t.commands ?? []).map((c) => ({ ...c, params: c.params.map((p) => ({ ...p })) })),
   };
 }
@@ -158,6 +161,7 @@ export default function ToolEditorDrawer({
         tags: draft.tags,
         path: hasPath ? draft.path!.trim() : undefined,
         envVars: Object.keys(envVars).length > 0 ? envVars : undefined,
+        setupCommand: draft.setupCommand?.trim() || undefined,
         healthCheck,
         commands: draft.commands,
       };
@@ -168,6 +172,7 @@ export default function ToolEditorDrawer({
         await ToolsApi.update(tool.id, {
           ...payload,
           envVars: Object.keys(envVars).length > 0 ? envVars : null,
+          setupCommand: draft.setupCommand?.trim() || null,
           healthCheck: healthCheck ?? null,
         });
         message.success('工具已更新');
@@ -253,6 +258,19 @@ export default function ToolEditorDrawer({
               value={draft.path}
               onChange={(e) => patch('path', e.target.value)}
               placeholder="如 /usr/bin/hcitool（留空则为纯命令手册）"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="环境激活命令（可选）"
+            tooltip="每条命令执行前，在同一个 shell 里先执行这段命令，用于进入运行环境，例如 source ~/venv/bin/activate 或 source ~/miniconda3/etc/profile.d/conda.sh && conda activate myenv。激活失败（退出码非 0）会中止后续命令。"
+          >
+            <Input.TextArea
+              className="mono"
+              autoSize={{ minRows: 1, maxRows: 4 }}
+              placeholder="source ~/venv/bin/activate"
+              value={draft.setupCommand}
+              onChange={(e) => patch('setupCommand', e.target.value)}
             />
           </Form.Item>
 
