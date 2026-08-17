@@ -247,7 +247,7 @@ export default function Clauses() {
                 pagination={{ pageSize: 100, showSizeChanger: true }}
                 expandable={{ defaultExpandAllRows: true }}
                 columns={[
-                  { title: '编号', dataIndex: 'clauseId', width: 120, render: (v: string, r) => (
+                  { title: '编号', dataIndex: 'clauseId', width: 140, onCell: () => ({ style: { whiteSpace: 'nowrap' } }), render: (v: string, r) => (
                     <Space>
                       <code className="mono">{v}</code>
                       {r.parentId ? null : <Tag color="geekblue">章节</Tag>}
