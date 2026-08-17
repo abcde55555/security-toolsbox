@@ -25,10 +25,11 @@ export class ProjectService {
   }): Project {
     const template = this.ctx.repos.templates.getById(input.templateId);
     if (!template) throw Errors.validation('所选模板不存在');
-    const missing = this.validateVariables(template.variables, input.variables);
-    if (missing.length > 0) {
-      throw Errors.variablesMissing(`缺少必填变量: ${missing.join(', ')}`, { missing });
-    }
+    // Variables are filled in *after* project creation (on the 变量 tab), so we
+    // do not block creation on missing required values. Template-declared
+    // defaults are seeded here; the orchestrator rejects unresolved
+    // placeholders at run time if a required value is still empty.
+    const variables = { ...this.defaultVariables(template.variables), ...(input.variables ?? {}) };
     const project = this.ctx.repos.projects.create({
       name: input.name,
       description: input.description,
@@ -36,7 +37,7 @@ export class ProjectService {
       templateVersionSnapshot: template.revision,
       standardVersion: input.standardVersion ?? 'EN18031:2019',
       targetComplianceLevel: input.targetComplianceLevel,
-      variables: input.variables,
+      variables,
       createdBy: this.ctx.userId,
       workspaceId: 'default',
     });
@@ -108,6 +109,14 @@ export class ProjectService {
 
   updateVariables(id: string, variables: Record<string, unknown>): Project {
     return this.update(id, { variables });
+  }
+
+  private defaultVariables(declarations: TemplateVariable[]): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const decl of declarations) {
+      if (decl.default !== undefined) out[decl.name] = decl.default;
+    }
+    return out;
   }
 
   private validateVariables(
