@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, CodeOutlined,
-  SaveOutlined, ApiOutlined,
+  SaveOutlined, ApiOutlined, ExpandAltOutlined, CompressOutlined,
 } from '@ant-design/icons';
 import type { Clause, ClauseNode, ClauseMappingRule, Tool, Standard } from '@en18031/shared';
 import { ClausesApi, ToolsApi, StandardsApi } from '../api/endpoints';
@@ -42,6 +42,10 @@ export default function Clauses() {
   const [jsonText, setJsonText] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [expandedKeys, setExpandedKeys] = useState<readonly string[]>([]);
+
   const loadStandards = async () => {
     try {
       const ss = await StandardsApi.list();
@@ -61,6 +65,32 @@ export default function Clauses() {
 
   useEffect(() => { void loadStandards(); }, []);
   useEffect(() => { if (activeStd) void loadClauses(activeStd); }, [activeStd]);
+  useEffect(() => { setPage(1); setExpandedKeys([]); }, [activeStd]);
+
+  const roots = useMemo(() => tree.filter((n) => !n.parentId), [tree]);
+
+  const collectKeys = (nodes: ClauseNode[]): string[] => {
+    const out: string[] = [];
+    for (const n of nodes) {
+      out.push(n.clauseId);
+      if (n.children?.length) out.push(...collectKeys(n.children));
+    }
+    return out;
+  };
+
+  const pagedRoots = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return roots.slice(start, start + pageSize);
+  }, [roots, page, pageSize]);
+
+  const allExpanded = useMemo(() => {
+    const keys = new Set(expandedKeys);
+    return roots.length > 0 && collectKeys(roots).every((k) => keys.has(k));
+  }, [roots, expandedKeys]);
+
+  const toggleAll = () => {
+    setExpandedKeys(allExpanded ? [] : collectKeys(roots));
+  };
 
   const flatClauses = useMemo(() => {
     const out: Clause[] = [];
@@ -108,9 +138,20 @@ export default function Clauses() {
 
   // ---- clause CRUD ----
   const parentOptions = useMemo(() => {
-    // Parent candidates: top-level clauses (chapter headers) only.
-    const roots = tree.filter((n) => !n.parentId);
-    return roots.map((r) => ({ value: r.clauseId, label: `${r.clauseId} ${r.title}` }));
+    // Parent candidates: any clause in the tree, shown with indentation so
+    // deeper levels (e.g. 5.1.1) can be created under a sub-clause.
+    const out: { value: string; label: string }[] = [];
+    const walk = (nodes: ClauseNode[], depth: number) => {
+      for (const n of nodes) {
+        out.push({
+          value: n.clauseId,
+          label: `${'└ '.repeat(depth)}${n.clauseId} ${n.title}`,
+        });
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(tree, 0);
+    return out;
   }, [tree]);
 
   const openCreateClause = (parentId?: string) => {
@@ -231,6 +272,13 @@ export default function Clauses() {
                 </Typography.Text>
               </div>
               <Space>
+                <Button
+                  icon={allExpanded ? <CompressOutlined /> : <ExpandAltOutlined />}
+                  onClick={toggleAll}
+                  disabled={roots.length === 0}
+                >
+                  {allExpanded ? '折叠全部' : '展开全部'}
+                </Button>
                 <Button icon={<ApiOutlined />} onClick={() => setRulesOpen(true)}>判定规则</Button>
                 <Button icon={<CodeOutlined />} onClick={() => void openJson()}>JSON 编辑</Button>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreateClause()}>新建顶级条款</Button>
@@ -243,9 +291,20 @@ export default function Clauses() {
               <Table
                 rowKey="clauseId"
                 size="small"
-                dataSource={tree as unknown as ClauseNode[]}
-                pagination={{ pageSize: 100, showSizeChanger: true }}
-                expandable={{ defaultExpandAllRows: true }}
+                dataSource={pagedRoots as unknown as ClauseNode[]}
+                pagination={{
+                  current: page,
+                  pageSize,
+                  total: roots.length,
+                  showSizeChanger: true,
+                  pageSizeOptions: [8, 20, 50],
+                  showTotal: (total) => `共 ${total} 章 / ${flatClauses.length} 项`,
+                  onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+                }}
+                expandable={{
+                  expandedRowKeys: expandedKeys,
+                  onExpandedRowsChange: (keys) => setExpandedKeys(keys.map((k) => String(k))),
+                }}
                 columns={[
                   { title: '编号', dataIndex: 'clauseId', width: 140, onCell: () => ({ style: { whiteSpace: 'nowrap' } }), render: (v: string, r) => (
                     <Space>
@@ -328,7 +387,7 @@ export default function Clauses() {
             <Form.Item name="chapter" label="所属章节" rules={[{ required: true }]} style={{ flex: 1 }}>
               <Input placeholder="如 5.5" className="mono" />
             </Form.Item>
-            <Form.Item name="parentId" label="父条款（章节）" style={{ flex: 1 }}>
+            <Form.Item name="parentId" label="父条款" style={{ flex: 1 }}>
               <Select
                 allowClear
                 placeholder="顶级条款留空"
