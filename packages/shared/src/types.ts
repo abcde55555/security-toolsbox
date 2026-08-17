@@ -203,7 +203,8 @@ export interface Tool {
   author?: string;
   description?: string;
   tags: string[];
-  category: ToolCategory;
+  /** Category key; built-in keys are in TOOL_CATEGORIES, custom keys allowed. */
+  category: string;
   path?: string;
   envVars?: Record<string, string>;
   setupCommand?: string;

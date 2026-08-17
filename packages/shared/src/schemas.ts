@@ -86,7 +86,11 @@ export const matcherTypeSchema = z.enum(MATCHER_TYPES);
 export const onMatchSchema = z.enum(ON_MATCH_ACTIONS);
 export const reportFormatSchema = z.enum(REPORT_FORMATS);
 export const userRoleSchema = z.enum(USER_ROLES);
-export const toolCategorySchema = z.enum(TOOL_CATEGORIES);
+/**
+ * Category is a free-form string key so admins can add custom categories.
+ * The built-in set lives in TOOL_CATEGORIES; unknown keys render as-is.
+ */
+export const toolCategorySchema = z.string().min(1).max(64);
 
 const selectOptionSchema = z.union([z.string(), z.object({ label: z.string(), value: z.string() })]);
 

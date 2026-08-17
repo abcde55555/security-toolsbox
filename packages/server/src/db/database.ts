@@ -384,6 +384,19 @@ const MIGRATIONS: {
     );
     `,
   },
+  {
+    id: 6,
+    name: 'tool_categories_table',
+    sql: `
+    CREATE TABLE IF NOT EXISTS tool_categories (
+      key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      builtin INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL
+    );
+    `,
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

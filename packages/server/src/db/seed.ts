@@ -9,6 +9,8 @@ export async function runSeed(): Promise<void> {
   const db = getDb();
   const repos = getRepositories();
 
+  repos.categories.seed();
+
   const now = nowIso();
   const workspaceExists = db.prepare('SELECT id FROM workspaces WHERE id = ?').get('default');
   if (!workspaceExists) {

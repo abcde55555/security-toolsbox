@@ -6,15 +6,18 @@ import {
 import {
   ReloadOutlined, PlusOutlined, SafetyCertificateOutlined, ThunderboltOutlined,
   CopyOutlined, AppstoreOutlined, CodeOutlined, EditOutlined, DeleteOutlined, DownOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import type { Tool, ToolCommand } from '@en18031/shared';
-import { ToolsApi } from '../api/endpoints';
+import { ToolsApi, CategoriesApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import {
-  categoryLabel, categoryLabels, healthColor, healthText, healthLegend, severityColor, severityText,
+  healthColor, healthText, healthLegend, severityColor, severityText,
 } from '../utils/ui';
+import { useCategories } from '../hooks/useCategories';
 import RunCommandModal from '../components/RunCommandModal';
 import ToolEditorDrawer from '../components/ToolEditorDrawer';
+import CategoryManager from '../components/CategoryManager';
 
 const { Sider, Content } = Layout;
 
@@ -35,6 +38,8 @@ export default function ToolLibrary() {
   const [runCmd, setRunCmd] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
+  const [catManagerOpen, setCatManagerOpen] = useState(false);
+  const { categories, labelOf, refresh: refreshCats } = useCategories();
 
   const load = async () => {
     setLoading(true);
@@ -153,25 +158,38 @@ export default function ToolLibrary() {
   return (
     <Layout style={{ height: '100%', background: 'transparent' }}>
       <Sider width={230} theme="light" style={{ borderRight: '1px solid #eef0f4', padding: 12, overflow: 'auto' }}>
-        <Typography.Text strong>工具分类</Typography.Text>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Typography.Text strong>工具分类</Typography.Text>
+          <Tooltip title="管理分类">
+            <Button size="small" type="text" icon={<SettingOutlined />} aria-label="管理分类" onClick={() => setCatManagerOpen(true)} />
+          </Tooltip>
+        </Space>
         <div style={{ marginTop: 10 }}>
           <Card
             size="small"
             hoverable
             onClick={() => setCategory(undefined)}
             style={{ marginBottom: 6, borderColor: !category ? '#2563eb' : undefined }}
+            tabIndex={0}
+            role="button"
+            onKeyDown={(e) => e.key === 'Enter' && setCategory(undefined)}
           >
             全部工具 <Tag>{stats.total}</Tag>
           </Card>
-          {categoryLabels.map((c) => (
+          {categories.map((c) => (
             <Card
               key={c.key}
               size="small"
               hoverable
               onClick={() => setCategory(category === c.key ? undefined : c.key)}
               style={{ marginBottom: 6, borderColor: category === c.key ? '#2563eb' : undefined }}
+              tabIndex={0}
+              role="button"
+              onKeyDown={(e) => e.key === 'Enter' && setCategory(category === c.key ? undefined : c.key)}
             >
-              {c.label} <Tag>{categoryCounts.get(c.key) ?? 0}</Tag>
+              {c.label}
+              {c.builtin && <Tag style={{ marginInlineStart: 4 }}>内置</Tag>}
+              <Tag>{categoryCounts.get(c.key) ?? 0}</Tag>
             </Card>
           ))}
         </div>
@@ -245,7 +263,7 @@ export default function ToolLibrary() {
                       <Tag>自定义</Tag>
                     )}
                     {manual && <Tag color="geekblue">{(t.commands ?? []).length} 条命令</Tag>}
-                    <Tag>{categoryLabel(t.category)}</Tag>
+                    <Tag>{labelOf(t.category)}</Tag>
                     <Tag>v{t.version}</Tag>
                   </div>
                   <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 12 }}>
@@ -319,7 +337,7 @@ export default function ToolLibrary() {
               <Descriptions.Item label="类型">
                 {selected.type === 'module' ? '内置模组' : isCommandManual(selected) ? '命令手册' : '自定义命令'}
               </Descriptions.Item>
-              <Descriptions.Item label="分类">{categoryLabel(selected.category)}</Descriptions.Item>
+              <Descriptions.Item label="分类">{labelOf(selected.category)}</Descriptions.Item>
               <Descriptions.Item label="健康状态">
                 <Badge color={healthColor[selected.healthStatus]} text={healthText[selected.healthStatus]} />
               </Descriptions.Item>
@@ -463,6 +481,12 @@ export default function ToolLibrary() {
             }
           });
         }}
+      />
+
+      <CategoryManager
+        open={catManagerOpen}
+        onClose={() => setCatManagerOpen(false)}
+        onChanged={() => { void refreshCats(); void load(); }}
       />
     </Layout>
   );

@@ -11,7 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import type { Template, Tool, TemplateStep, FormField } from '@en18031/shared';
 import { TemplatesApi, ToolsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { categoryLabel, failureStrategyText, versionLockText } from '../utils/ui';
+import { failureStrategyText, versionLockText } from '../utils/ui';
+import { useCategories } from '../hooks/useCategories';
 import StepParamBinder, { isBoundValue } from '../components/StepParamBinder';
 import type { TemplateVariable } from '@en18031/shared';
 
@@ -56,6 +57,7 @@ export default function Templates() {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
+  const { labelOf } = useCategories();
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -469,7 +471,7 @@ export default function Templates() {
                     onChange={(v) => selectTool(idx, v)}
                     options={tools.map((t) => ({
                       value: t.id,
-                      label: `${t.name} (${categoryLabel(t.category)})${t.formFields.length === 0 ? ' · 无表单参数' : ''}`,
+                      label: `${t.name} (${labelOf(t.category)})${t.formFields.length === 0 ? ' · 无表单参数' : ''}`,
                     }))}
                   />
                   {hasForm ? (

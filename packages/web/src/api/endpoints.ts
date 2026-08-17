@@ -33,6 +33,21 @@ export const StandardsApi = {
   remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/standards/${id}`),
 };
 
+export interface ToolCategoryInfo {
+  key: string;
+  label: string;
+  sortOrder: number;
+  builtin: boolean;
+}
+
+export const CategoriesApi = {
+  list: () => api.get<ToolCategoryInfo[]>('/tool-categories'),
+  create: (body: { key?: string; label: string }) => api.post<ToolCategoryInfo>('/tool-categories', body),
+  update: (key: string, label: string) => api.put<ToolCategoryInfo>(`/tool-categories/${key}`, { label }),
+  remove: (key: string) =>
+    api.del<{ deleted: boolean; reassigned: number }>(`/tool-categories/${encodeURIComponent(key)}`),
+};
+
 export const ToolsApi = {
   list: (params: Record<string, string | number | undefined> = {}) => {
     const q = new URLSearchParams();

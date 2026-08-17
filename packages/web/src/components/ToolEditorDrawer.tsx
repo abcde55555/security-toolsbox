@@ -10,7 +10,7 @@ import type { Tool, ToolCommand, Clause, HealthCheckConfig } from '@en18031/shar
 import { uuid } from '@en18031/shared';
 import { ToolsApi, ClausesApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { categoryOptions, categoryLabel } from '../utils/ui';
+import { useCategories } from '../hooks/useCategories';
 import CommandEditor from './CommandEditor';
 
 interface ToolDraft {
@@ -69,6 +69,7 @@ export default function ToolEditorDrawer({
   const [commandEditorOpen, setCommandEditorOpen] = useState(false);
   const [healthEnabled, setHealthEnabled] = useState(false);
   const [envRows, setEnvRows] = useState<Array<{ id: string; key: string; value: string }>>([]);
+  const { categories } = useCategories();
 
   useEffect(() => {
     if (!open) return;
@@ -218,7 +219,9 @@ export default function ToolEditorDrawer({
                 <Select
                   value={draft.category}
                   onChange={(v) => patch('category', v)}
-                  options={categoryOptions}
+                  showSearch
+                  optionFilterProp="label"
+                  options={categories.map((c) => ({ value: c.key, label: c.label }))}
                 />
               </Form.Item>
             </Col>
