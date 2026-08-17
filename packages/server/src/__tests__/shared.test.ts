@@ -5,6 +5,7 @@ import {
   validateFormValues,
   toolCommandSchema,
   customToolCreateSchema,
+  commandRunAttachSchema,
 } from '@en18031/shared';
 import './helpers.js';
 
@@ -141,5 +142,22 @@ describe('customToolCreateSchema', () => {
     expect(r.category).toBe('other');
     expect(r.commands).toEqual([]);
     expect(r.tags).toEqual([]);
+  });
+});
+
+describe('commandRunAttachSchema', () => {
+  it('accepts an explicit null clauseId/note (saving to project without a clause)', () => {
+    const r = commandRunAttachSchema.parse({
+      projectId: 'proj-1',
+      clauseId: null,
+      note: null,
+    });
+    expect(r.projectId).toBe('proj-1');
+    expect(r.clauseId).toBeNull();
+    expect(r.note).toBeNull();
+  });
+
+  it('rejects an empty projectId', () => {
+    expect(() => commandRunAttachSchema.parse({ projectId: '' })).toThrow();
   });
 });

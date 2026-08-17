@@ -128,7 +128,7 @@ export class CommandRunRepository {
     return this.getById(id);
   }
 
-  setLink(id: string, patch: { projectId?: string | null; clauseId?: string | null; note?: string }): CommandRun | null {
+  setLink(id: string, patch: { projectId?: string | null; clauseId?: string | null; note?: string | null }): CommandRun | null {
     const existing = this.getById(id);
     if (!existing) return null;
     this.db

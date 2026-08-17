@@ -272,8 +272,8 @@ export const commandRunStartSchema = z.object({
 
 export const commandRunAttachSchema = z.object({
   projectId: z.string().min(1),
-  clauseId: z.string().optional(),
-  note: z.string().optional(),
+  clauseId: z.string().min(1).nullable().optional(),
+  note: z.string().nullable().optional(),
 });
 
 export function validateFormValues(

@@ -501,7 +501,7 @@ export class CommandRunnerService {
 
   attachToProject(
     runId: string,
-    patch: { projectId: string; clauseId?: string; note?: string },
+    patch: { projectId: string; clauseId?: string | null; note?: string | null },
   ): CommandRun {
     const run = this.ctx.repos.commandRuns.getById(runId);
     if (!run) throw Errors.notFound('运行记录', runId);
