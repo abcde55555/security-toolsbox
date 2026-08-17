@@ -338,6 +338,18 @@ export interface StepRun {
   percent: number;
 }
 
+export interface Standard {
+  /** Stable identifier used as `clauses.standardVersion`, e.g. "EN18031:2019". */
+  id: string;
+  /** Short code, e.g. "EN18031". */
+  code: string;
+  name: string;
+  version: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Clause {
   clauseId: string;
   standardVersion: string;
@@ -349,6 +361,11 @@ export interface Clause {
   defaultSeverity: Severity;
   parentId?: string;
   tags: string[];
+}
+
+/** A clause with its direct children resolved, for tree rendering. */
+export interface ClauseNode extends Clause {
+  children?: ClauseNode[];
 }
 
 export interface ClauseMappingRule {

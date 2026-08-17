@@ -53,6 +53,16 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get('/api/clauses/tree', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const q = req.query as { standardVersion?: string; level?: 'L1' | 'L2' | 'L3' };
+      const standardVersion = q.standardVersion ?? 'EN18031:2019';
+      ok(reply, getServices().repos.clauses.tree(standardVersion, q.level));
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
   app.get('/api/clauses/:clauseId', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
       const { clauseId } = req.params as { clauseId: string };

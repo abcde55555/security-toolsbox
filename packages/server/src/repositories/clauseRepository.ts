@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import type { Clause, ClauseMappingRule } from '@en18031/shared';
+import type { Clause, ClauseMappingRule, ClauseNode } from '@en18031/shared';
 import { uuid, nowIso } from '@en18031/shared';
 import { parseJson, toJson } from './json.js';
 
@@ -55,6 +55,34 @@ export class ClauseRepository {
 
   exists(standardVersion: string, clauseId: string): boolean {
     return this.get(standardVersion, clauseId) !== null;
+  }
+
+  countForStandard(standardVersion: string): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) as c FROM clauses WHERE standardVersion = ?')
+      .get(standardVersion) as { c: number };
+    return row.c;
+  }
+
+  /** Build the parent/child clause tree. Root clauses have no parentId. */
+  tree(standardVersion: string, level?: 'L1' | 'L2' | 'L3'): ClauseNode[] {
+    const all = this.list(standardVersion, level);
+    const byId = new Map<string, ClauseNode>();
+    for (const c of all) byId.set(c.clauseId, { ...c, children: [] });
+    const roots: ClauseNode[] = [];
+    for (const node of byId.values()) {
+      if (node.parentId && byId.has(node.parentId)) {
+        byId.get(node.parentId)!.children!.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    const sortRec = (nodes: ClauseNode[]) => {
+      nodes.sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }));
+      nodes.forEach((n) => n.children && sortRec(n.children));
+    };
+    sortRec(roots);
+    return roots;
   }
 
   countForLevel(standardVersion: string, level: 'L1' | 'L2' | 'L3'): number {

@@ -4,8 +4,8 @@ import {
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import type { Project, Template, ProjectRun } from '@en18031/shared';
-import { ProjectsApi, TemplatesApi } from '../api/endpoints';
+import type { Project, Template, ProjectRun, Standard } from '@en18031/shared';
+import { ProjectsApi, TemplatesApi, StandardsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { runStatusColor, runStatusText, projectStatusColor, projectStatusText, isTerminalStatus } from '../utils/ui';
 
@@ -19,6 +19,7 @@ export default function Projects() {
   const [params] = useSearchParams();
   const [projects, setProjects] = useState<ProjectWithRun[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [standards, setStandards] = useState<Standard[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -30,9 +31,10 @@ export default function Projects() {
     try {
       // GET /api/projects now returns each project with its latestRun attached
       // (single query), so no per-project fetch is needed.
-      const [ps, ts] = await Promise.all([ProjectsApi.list(), TemplatesApi.list()]);
+      const [ps, ts, ss] = await Promise.all([ProjectsApi.list(), TemplatesApi.list(), StandardsApi.list()]);
       setProjects(ps as ProjectWithRun[]);
       setTemplates(ts);
+      setStandards(ss);
     } catch (e) {
       reportError(e);
     } finally {
@@ -47,6 +49,13 @@ export default function Projects() {
     void load();
     if (params.get('newFrom')) setOpen(true);
   }, []);
+
+  // Default the selected standard once standards are loaded.
+  useEffect(() => {
+    if (standards.length > 0 && form) {
+      form.setFieldsValue({ standardVersion: standards[0].id });
+    }
+  }, [standards, form]);
 
   // Auto-refresh while any project has a non-terminal run.
   useEffect(() => {
@@ -66,7 +75,7 @@ export default function Projects() {
         name: v.name,
         description: v.description,
         templateId: v.templateId,
-        standardVersion: 'EN18031:2019',
+        standardVersion: v.standardVersion ?? standards[0]?.id ?? 'EN18031:2019',
         targetComplianceLevel: v.level,
         variables: {},
       });
@@ -147,11 +156,18 @@ export default function Projects() {
         confirmLoading={creating}
         okText="创建" cancelText="取消"
       >
-        <Form form={form} layout="vertical" initialValues={{ level: 'L2', templateId: params.get('newFrom') ?? undefined }}>
+        <Form form={form} layout="vertical" initialValues={{ level: 'L2', standardVersion: standards[0]?.id ?? 'EN18031:2019', templateId: params.get('newFrom') ?? undefined }}>
           <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
             <Input placeholder="例如：智能摄像头 X1 合规测试" />
           </Form.Item>
           <Form.Item name="description" label="项目描述"><TextArea rows={2} /></Form.Item>
+          <Form.Item name="standardVersion" label="合规标准" rules={[{ required: true, message: '请选择标准' }]}>
+            <Select
+              placeholder="选择合规标准"
+              options={standards.map((s) => ({ value: s.id, label: `${s.name} (${s.version})` }))}
+              notFoundContent="尚无标准，请先到「合规测试项」页面新建"
+            />
+          </Form.Item>
           <Form.Item name="templateId" label="绑定模板" rules={[{ required: true, message: '请选择模板' }]}>
             <Select placeholder="选择测试模板" options={templates.map((t) => ({ value: t.id, label: `${t.name} (${t.steps.length} 步)` }))} />
           </Form.Item>

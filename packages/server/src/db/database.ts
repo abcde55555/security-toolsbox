@@ -369,6 +369,21 @@ const MIGRATIONS: {
       }
     },
   },
+  {
+    id: 5,
+    name: 'standards_table',
+    sql: `
+    CREATE TABLE IF NOT EXISTS standards (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      version TEXT NOT NULL,
+      description TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    `,
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

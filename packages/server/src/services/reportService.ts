@@ -37,16 +37,22 @@ export class ReportService {
       }
     }
 
-    const chapterMap = new Map<string, Clause & { status: 'pass' | 'fail' | 'not_covered' | 'conditional'; verdict?: ClauseVerdict }>();
+    // A clause referenced as another's parentId is a chapter/parent — its
+    // verdict is ROLLED UP from descendants and does not count toward leaf
+    // (testable-item) metrics.
+    const parentIds = new Set<string>();
+    for (const c of allClauses) if (c.parentId) parentIds.add(c.parentId);
+    const leaves = allClauses.filter((c) => !parentIds.has(c.clauseId));
+
     const byChapter: ReportSummary['byChapter'] = {};
     let pass = 0;
     let fail = 0;
     let notCovered = 0;
     const failBySeverity = { high: 0, middle: 0, low: 0 };
 
-    for (const clause of allClauses) {
+    for (const clause of leaves) {
       const v = latestByClause.get(clause.clauseId);
-      let status: 'pass' | 'fail' | 'not_covered' | 'conditional';
+      let status: 'pass' | 'fail' | 'not_covered';
       if (!v) {
         status = 'not_covered';
         notCovered++;
@@ -65,10 +71,9 @@ export class ReportService {
       if (status === 'pass') byChapter[clause.chapter].pass++;
       else if (status === 'fail') byChapter[clause.chapter].fail++;
       else byChapter[clause.chapter].notCovered++;
-      chapterMap.set(clause.clauseId, { ...clause, status, verdict: v });
     }
 
-    const applicable = allClauses.length;
+    const applicable = leaves.length;
     const notCoveredRatio = applicable > 0 ? notCovered / applicable : 0;
     let grade: ReportGrade;
     if (failBySeverity.high > 0) {
@@ -141,11 +146,48 @@ export class ReportService {
       const ex = latestByClause.get(v.clauseId);
       if (!ex || v.createdAt >= ex.createdAt) latestByClause.set(v.clauseId, v);
     }
-    const clauses = allClauses.map((c) => ({
-      ...c,
-      verdict: latestByClause.get(c.clauseId) ?? null,
-      evidences: latestByClause.get(c.clauseId)?.evidenceRefs.map((id) => evidences.find((e) => e.id === id)).filter(Boolean) ?? [],
-    }));
+
+    // Roll up parent (chapter) verdicts from their leaf descendants:
+    // any fail -> fail; all pass -> pass; otherwise not covered.
+    const byId = new Map<string, Clause>();
+    for (const c of allClauses) byId.set(c.clauseId, c);
+    const rolledUp = new Map<string, { pass: boolean } | null>();
+    const isParent = (id: string) => allClauses.some((c) => c.parentId === id);
+    const descendants = (id: string): Clause[] => {
+      const out: Clause[] = [];
+      const walk = (pid: string) => {
+        for (const c of allClauses) {
+          if (c.parentId === pid) { out.push(c); walk(c.clauseId); }
+        }
+      };
+      walk(id);
+      return out;
+    };
+    for (const c of allClauses) {
+      if (!isParent(c.clauseId)) continue;
+      const leaves = descendants(c.clauseId).filter((d) => !isParent(d.clauseId));
+      const leafVerdicts = leaves.map((l) => latestByClause.get(l.clauseId)).filter(Boolean) as ClauseVerdict[];
+      if (leafVerdicts.length === 0) { rolledUp.set(c.clauseId, null); continue; }
+      const anyFail = leafVerdicts.some((v) => !v.pass);
+      const allPass = leaves.length === leafVerdicts.length && leafVerdicts.every((v) => v.pass);
+      rolledUp.set(c.clauseId, anyFail ? { pass: false } : allPass ? { pass: true } : null);
+    }
+
+    const clauses = allClauses.map((c) => {
+      const isParentClause = isParent(c.clauseId);
+      const roll = rolledUp.get(c.clauseId);
+      const direct = latestByClause.get(c.clauseId);
+      // Parents show a synthetic rolled-up verdict; leaves show their real one.
+      const verdict = isParentClause
+        ? (roll ? ({ clauseId: c.clauseId, pass: roll.pass, reason: roll.pass ? '所有子项通过' : '存在未通过子项', severity: c.defaultSeverity, overridden: false } as unknown as ClauseVerdict) : null)
+        : (direct ?? null);
+      return {
+        ...c,
+        isParent: isParentClause,
+        verdict,
+        evidences: direct?.evidenceRefs.map((id) => evidences.find((e) => e.id === id)).filter(Boolean) ?? [],
+      };
+    });
     return { report, project, clauses };
   }
 
@@ -249,20 +291,35 @@ export class ReportService {
       String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
     const gradeColor =
       report.grade === 'PASS' ? '#16a34a' : report.grade === 'FAIL' ? '#dc2626' : report.grade === 'CONDITIONAL_PASS' ? '#ea580c' : '#6b7280';
-    const rows = clauses
-      .map((c) => {
-        const status = c.verdict ? (c.verdict.pass ? 'PASS' : 'FAIL') : 'NOT_COVERED';
-        const color = status === 'PASS' ? '#16a34a' : status === 'FAIL' ? '#dc2626' : '#6b7280';
-        const reason = c.verdict?.reason ? esc(c.verdict.reason) : '未执行 / 未覆盖';
-        return `<tr>
-          <td>${esc(c.clauseId)}</td><td>${esc(c.chapter)}</td><td>${esc(c.title)}</td><td>${esc(c.level)}</td>
-          <td style="color:${color};font-weight:600">${status}</td>
-          <td>${esc(c.verdict?.severity ?? c.defaultSeverity)}</td>
-          <td>${reason}</td>
-        </tr>`;
-      })
+    const standard = this.ctx.repos.standards.get(project.standardVersion);
+    const standardLabel = standard ? `${esc(standard.name)} (${esc(standard.id)})` : esc(project.standardVersion);
+
+    // Build a tree and render parent chapters bold with their leaves indented.
+    const byId = new Map(clauses.map((c) => [c.clauseId, c]));
+    const roots = clauses.filter((c) => !c.parentId || !byId.has(c.parentId));
+    const renderRow = (c: typeof clauses[number], depth: number): string => {
+      const status = c.verdict ? (c.verdict.pass ? 'PASS' : 'FAIL') : 'NOT_COVERED';
+      const color = status === 'PASS' ? '#16a34a' : status === 'FAIL' ? '#dc2626' : '#6b7280';
+      const reason = c.verdict?.reason ? esc(c.verdict.reason) : (c.isParent ? '—' : '未执行 / 未覆盖');
+      const indent = '&nbsp;'.repeat(depth * 4);
+      const weight = c.isParent ? 'font-weight:700;background:#f9fafb;' : '';
+      const children = clauses
+        .filter((x) => x.parentId === c.clauseId)
+        .sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }))
+        .map((ch) => renderRow(ch, depth + 1))
+        .join('');
+      return `<tr style="${weight}">
+        <td>${indent}${esc(c.clauseId)}</td><td>${esc(c.title)}</td><td>${esc(c.level)}</td>
+        <td style="color:${color};font-weight:600">${status}</td>
+        <td>${esc(c.verdict?.severity ?? c.defaultSeverity)}</td>
+        <td>${reason}</td>
+      </tr>${children}`;
+    };
+    const rows = roots
+      .sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }))
+      .map((c) => renderRow(c, 0))
       .join('');
-    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>EN18031 合规报告 - ${esc(project.name)}</title>
+    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>合规报告 - ${esc(project.name)}</title>
     <style>
       body{font-family:-apple-system,"PingFang SC",sans-serif;margin:40px;color:#1f2937}
       h1{font-size:24px} h2{font-size:18px;margin-top:28px;border-bottom:2px solid #e5e7eb;padding-bottom:6px}
@@ -274,9 +331,10 @@ export class ReportService {
       .metric{border:1px solid #e5e7eb;border-radius:8px;padding:12px 18px}
       .metric .n{font-size:24px;font-weight:700}
       .meta{color:#6b7280;font-size:13px}
+      @media print{body{margin:12px}}
     </style></head><body>
-      <h1>EN18031 合规测试报告</h1>
-      <div class="meta">项目：${esc(project.name)} | 标准：${esc(project.standardVersion)} | 目标等级：${esc(project.targetComplianceLevel)} | 生成时间：${esc(report.generatedAt)}</div>
+      <h1>合规测试报告</h1>
+      <div class="meta">项目：${esc(project.name)} | 标准：${standardLabel} | 目标等级：${esc(project.targetComplianceLevel)} | 生成时间：${esc(report.generatedAt)}</div>
       <div class="grade">${esc(report.grade)}</div>
       <div class="metrics">
         <div class="metric"><div class="n">${report.summary.applicable}</div><div>适用条款</div></div>
@@ -289,8 +347,8 @@ export class ReportService {
       <table><tr><th>章节</th><th>总数</th><th>通过</th><th>失败</th><th>未覆盖</th></tr>
       ${Object.entries(report.summary.byChapter).map(([ch, s]) => `<tr><td>${esc(ch)}</td><td>${s.total}</td><td>${s.pass}</td><td>${s.fail}</td><td>${s.notCovered}</td></tr>`).join('')}
       </table>
-      <h2>条款判定详情</h2>
-      <table><tr><th>条款</th><th>章节</th><th>标题</th><th>等级</th><th>状态</th><th>严重度</th><th>判定理由</th></tr>
+      <h2>条款判定详情（按章节层级）</h2>
+      <table><tr><th style="width:110px">编号</th><th>标题</th><th style="width:70px">等级</th><th style="width:110px">状态</th><th style="width:80px">严重度</th><th>判定理由</th></tr>
       ${rows}
       </table>
     </body></html>`;

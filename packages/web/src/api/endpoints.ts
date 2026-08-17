@@ -6,7 +6,9 @@ import type {
   ProjectRun,
   StepRun,
   Clause,
+  ClauseNode,
   ClauseMappingRule,
+  Standard,
   Report,
   AuditLog,
 } from '@en18031/shared';
@@ -23,6 +25,13 @@ export interface ReportDetail {
   project: Project;
   clauses: Array<Clause & { verdict: { id: string; pass: boolean; severity: string; reason: string; overridden: boolean } | null; evidences: unknown[] }>;
 }
+
+export const StandardsApi = {
+  list: () => api.get<Standard[]>('/standards'),
+  create: (body: unknown) => api.post<Standard>('/standards', body),
+  update: (id: string, body: unknown) => api.put<Standard>(`/standards/${id}`, body),
+  remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/standards/${id}`),
+};
 
 export const ToolsApi = {
   list: (params: Record<string, string | number | undefined> = {}) => {
@@ -100,6 +109,8 @@ export const ClausesApi = {
     api.put<Clause>(`/clauses/${clauseId}?standardVersion=${standardVersion}`, body),
   remove: (clauseId: string, standardVersion = 'EN18031:2019') =>
     api.del<{ clauseId: string; deleted: boolean }>(`/clauses/${clauseId}?standardVersion=${standardVersion}`),
+  tree: (standardVersion = 'EN18031:2019') =>
+    api.get<ClauseNode[]>(`/clauses/tree?standardVersion=${standardVersion}`),
   batchImport: (clauses: unknown[]) => api.post<{ imported: number }>('/clauses/batch-import', clauses),
   mappingRules: (toolId?: string) =>
     api.get<ClauseMappingRule[]>(`/clause-mapping-rules${toolId ? `?toolId=${toolId}` : ''}`),

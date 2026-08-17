@@ -7,6 +7,7 @@ import { ProjectRepository } from './projectRepository.js';
 import { ResultRepository } from './resultRepository.js';
 import { ReportRepository } from './reportRepository.js';
 import { CommandRunRepository } from './commandRunRepository.js';
+import { StandardRepository } from './standardRepository.js';
 
 export interface Repositories {
   audit: AuditRepository;
@@ -17,6 +18,7 @@ export interface Repositories {
   results: ResultRepository;
   reports: ReportRepository;
   commandRuns: CommandRunRepository;
+  standards: StandardRepository;
 }
 
 let repos: Repositories | null = null;
@@ -33,6 +35,7 @@ export function getRepositories(): Repositories {
     results: new ResultRepository(db),
     reports: new ReportRepository(db),
     commandRuns: new CommandRunRepository(db),
+    standards: new StandardRepository(db),
   };
   return repos;
 }
@@ -48,6 +51,7 @@ export function createInMemoryRepositories(): { repos: Repositories; close: () =
     results: new ResultRepository(db),
     reports: new ReportRepository(db),
     commandRuns: new CommandRunRepository(db),
+    standards: new StandardRepository(db),
   };
   return { repos: r, close: () => db.close() };
 }

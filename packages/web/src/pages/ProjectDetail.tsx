@@ -453,6 +453,7 @@ export default function ProjectDetail() {
                 detail={reportDetail}
                 summary={summary}
                 projectId={id}
+                standardName={project?.standardVersion}
                 onRegenerate={() => void regenerateReport()}
                 onExport={() => void exportExcel()}
               />

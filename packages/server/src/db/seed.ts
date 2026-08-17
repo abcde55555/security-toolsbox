@@ -30,6 +30,18 @@ export async function runSeed(): Promise<void> {
     ).run('local-admin', 'default', 'Admin', null, null, 'admin', 'active', now, now);
   }
 
+  // Ensure the EN18031 standard record exists for the seed-clause standardVersion.
+  if (!repos.standards.get(STANDARD_VERSION)) {
+    repos.standards.upsert({
+      id: STANDARD_VERSION,
+      code: 'EN18031',
+      name: 'EN 18031 网络安全标准',
+      version: '2019',
+      description: '欧洲电信标准化协会（ETSI）发布的消费类物联网网络安全标准。',
+    });
+    logger.info({ standard: STANDARD_VERSION }, 'standard seeded');
+  }
+
   for (const clause of SEED_CLAUSES) {
     repos.clauses.upsert(clause);
   }

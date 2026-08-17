@@ -18,6 +18,7 @@ import { reportRoutes } from './routes/reports.js';
 import { commandRunRoutes } from './routes/commandRuns.js';
 import { uploadRoutes } from './routes/upload.js';
 import { auditRoutes } from './routes/audit.js';
+import { standardRoutes } from './routes/standards.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'unhandled promise rejection');
@@ -83,6 +84,7 @@ async function bootstrap(): Promise<void> {
   await app.register(commandRunRoutes);
   await app.register(uploadRoutes);
   await app.register(auditRoutes);
+  await app.register(standardRoutes);
 
   const services = await initServices();
   try {
