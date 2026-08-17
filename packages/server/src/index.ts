@@ -56,6 +56,7 @@ async function bootstrap(): Promise<void> {
   await app.register(cors, { origin: corsOrigin as never, credentials: true });
 
   await app.register(multipart, {
+    throwFileSizeLimit: true,
     limits: {
       fileSize: config.uploadMaxBytes,
       files: 1,

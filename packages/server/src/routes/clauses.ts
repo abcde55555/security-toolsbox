@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getServices } from '../services/index.js';
 import { ok, requireRole, handleError } from './helpers.js';
+import { Errors } from '../services/errors.js';
 import type { Clause, ClauseMappingRule } from '@en18031/shared';
 
 const clauseInputSchema = {
@@ -16,16 +17,16 @@ function parseClauseBody(body: unknown, standardVersion: string): Clause {
   const clauseId = String(b.clauseId ?? '').trim();
   const chapter = String(b.chapter ?? '').trim();
   const title = String(b.title ?? '').trim();
-  if (!clauseId) throw Object.assign(new Error('条款编号必填'), { statusCode: 400, code: 9003 });
-  if (!chapter) throw Object.assign(new Error('章节必填'), { statusCode: 400, code: 9003 });
-  if (!title) throw Object.assign(new Error('标题必填'), { statusCode: 400, code: 9003 });
+  if (!clauseId) throw Errors.validation('条款编号必填');
+  if (!chapter) throw Errors.validation('章节必填');
+  if (!title) throw Errors.validation('标题必填');
   const level = (b.level ?? 'L1') as Clause['level'];
   if (!clauseInputSchema.level(level)) {
-    throw Object.assign(new Error('等级必须为 L1/L2/L3'), { statusCode: 400, code: 9003 });
+    throw Errors.validation('等级必须为 L1/L2/L3');
   }
   const defaultSeverity = (b.defaultSeverity ?? 'middle') as Clause['defaultSeverity'];
   if (!clauseInputSchema.defaultSeverity(defaultSeverity)) {
-    throw Object.assign(new Error('严重度必须为 high/middle/low'), { statusCode: 400, code: 9003 });
+    throw Errors.validation('严重度必须为 high/middle/low');
   }
   return {
     clauseId,
@@ -39,6 +40,46 @@ function parseClauseBody(body: unknown, standardVersion: string): Clause {
     parentId: b.parentId ? String(b.parentId) : undefined,
     tags: Array.isArray(b.tags) ? (b.tags as string[]) : [],
   };
+}
+
+interface ClauseLookup {
+  get(standardVersion: string, clauseId: string): Clause | null;
+  list(standardVersion: string): Clause[];
+}
+
+function validateParentId(
+  repos: ClauseLookup,
+  standardVersion: string,
+  clauseId: string,
+  parentId: string | undefined,
+): void {
+  if (!parentId) return;
+  if (parentId === clauseId) {
+    throw Errors.validation('父条款不能指向自身');
+  }
+  if (!repos.get(standardVersion, parentId)) {
+    throw Errors.validation(`父条款 ${parentId} 不存在`);
+  }
+  // Reject if parentId is a descendant of clauseId (would form a cycle).
+  const childrenOf = new Map<string, string[]>();
+  for (const c of repos.list(standardVersion)) {
+    if (c.parentId) {
+      const arr = childrenOf.get(c.parentId) ?? [];
+      arr.push(c.clauseId);
+      childrenOf.set(c.parentId, arr);
+    }
+  }
+  const stack = [clauseId];
+  const seen = new Set<string>();
+  while (stack.length) {
+    const cur = stack.pop()!;
+    if (cur === parentId) {
+      throw Errors.validation('父条款不能是当前条款的子项（会形成循环）');
+    }
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const child of childrenOf.get(cur) ?? []) stack.push(child);
+  }
 }
 
 export async function clauseRoutes(app: FastifyInstance): Promise<void> {
@@ -81,8 +122,9 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
       const standardVersion = q.standardVersion ?? 'EN18031:2019';
       const clause = parseClauseBody(req.body, standardVersion);
       if (getServices().repos.clauses.get(standardVersion, clause.clauseId)) {
-        throw Object.assign(new Error(`条款 ${clause.clauseId} 已存在`), { statusCode: 409, code: 9005 });
+        throw Errors.conflict(`条款 ${clause.clauseId} 已存在`);
       }
+      validateParentId(getServices().repos.clauses, standardVersion, clause.clauseId, clause.parentId);
       getServices().repos.clauses.upsert(clause);
       getServices().repos.audit.insert({
         userId: getServices().authz.getCurrentUser().id,
@@ -104,6 +146,20 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
       const standardVersion = q.standardVersion ?? 'EN18031:2019';
       getServices().clauses.validateClauseExists(standardVersion, clauseId);
       const b = (req.body ?? {}) as Record<string, unknown>;
+      if (b.level !== undefined && !clauseInputSchema.level(b.level as Clause['level'])) {
+        throw Errors.validation('等级必须为 L1/L2/L3');
+      }
+      if (
+        b.defaultSeverity !== undefined &&
+        !clauseInputSchema.defaultSeverity(b.defaultSeverity as Clause['defaultSeverity'])
+      ) {
+        throw Errors.validation('严重度必须为 high/middle/low');
+      }
+      const nextParentId =
+        b.parentId !== undefined ? (b.parentId ? String(b.parentId) : undefined) : undefined;
+      if (b.parentId !== undefined) {
+        validateParentId(getServices().repos.clauses, standardVersion, clauseId, nextParentId);
+      }
       const updated = getServices().repos.clauses.update(standardVersion, clauseId, {
         ...(b.title !== undefined && { title: String(b.title) }),
         ...(b.description !== undefined && { description: String(b.description) }),
@@ -111,7 +167,7 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
         ...(b.level !== undefined && { level: b.level as Clause['level'] }),
         ...(b.testingMethod !== undefined && { testingMethod: String(b.testingMethod) }),
         ...(b.defaultSeverity !== undefined && { defaultSeverity: b.defaultSeverity as Clause['defaultSeverity'] }),
-        ...(b.parentId !== undefined && { parentId: b.parentId ? String(b.parentId) : undefined }),
+        ...(b.parentId !== undefined && { parentId: nextParentId }),
         ...(b.tags !== undefined && { tags: Array.isArray(b.tags) ? (b.tags as string[]) : [] }),
       });
       getServices().repos.audit.insert({
@@ -132,8 +188,15 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
       const { clauseId } = req.params as { clauseId: string };
       const q = req.query as { standardVersion?: string };
       const standardVersion = q.standardVersion ?? 'EN18031:2019';
+      getServices().clauses.validateClauseExists(standardVersion, clauseId);
+      const hasChildren = getServices()
+        .repos.clauses.list(standardVersion)
+        .some((c) => c.parentId === clauseId);
+      if (hasChildren) {
+        throw Errors.conflict('该条款下仍有子条款，请先删除或转移子条款');
+      }
       const deleted = getServices().repos.clauses.delete(standardVersion, clauseId);
-      if (!deleted) throw Object.assign(new Error('条款不存在'), { statusCode: 404, code: 9004 });
+      if (!deleted) throw Errors.notFound('条款', clauseId);
       getServices().repos.audit.insert({
         userId: getServices().authz.getCurrentUser().id,
         action: 'clause.delete',

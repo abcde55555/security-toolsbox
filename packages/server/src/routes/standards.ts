@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getServices } from '../services/index.js';
 import { ok, requireRole, handleError } from './helpers.js';
+import { Errors } from '../services/errors.js';
 import type { Standard } from '@en18031/shared';
 
 function parseBody(body: unknown): Omit<Standard, 'createdAt' | 'updatedAt'> {
@@ -8,9 +9,9 @@ function parseBody(body: unknown): Omit<Standard, 'createdAt' | 'updatedAt'> {
   const code = String(b.code ?? '').trim();
   const version = String(b.version ?? '').trim();
   const name = String(b.name ?? '').trim();
-  if (!code) throw Object.assign(new Error('标准代号必填'), { statusCode: 400, code: 9003 });
-  if (!name) throw Object.assign(new Error('标准名称必填'), { statusCode: 400, code: 9003 });
-  if (!version) throw Object.assign(new Error('版本必填'), { statusCode: 400, code: 9003 });
+  if (!code) throw Errors.validation('标准代号必填');
+  if (!name) throw Errors.validation('标准名称必填');
+  if (!version) throw Errors.validation('版本必填');
   // id is provided explicitly, or derived as CODE:VERSION.
   const id = (b.id ? String(b.id).trim() : `${code}:${version}`).toUpperCase();
   return {
@@ -36,7 +37,7 @@ export async function standardRoutes(app: FastifyInstance): Promise<void> {
       const data = parseBody(req.body);
       const repos = getServices().repos;
       if (repos.standards.get(data.id)) {
-        throw Object.assign(new Error(`标准 ${data.id} 已存在`), { statusCode: 409, code: 9005 });
+        throw Errors.conflict(`标准 ${data.id} 已存在`);
       }
       const standard = repos.standards.upsert(data);
       getServices().repos.audit.insert({
@@ -57,14 +58,34 @@ export async function standardRoutes(app: FastifyInstance): Promise<void> {
       const { id } = req.params as { id: string };
       const repos = getServices().repos;
       const existing = repos.standards.get(id);
-      if (!existing) throw Object.assign(new Error('标准不存在'), { statusCode: 404, code: 9004 });
+      if (!existing) throw Errors.notFound('标准', id);
       const b = (req.body ?? {}) as Record<string, unknown>;
-      const standard = repos.standards.upsert({
+      if (b.name !== undefined && !String(b.name).trim()) {
+        throw Errors.validation('标准名称必填');
+      }
+      if (b.version !== undefined && !String(b.version).trim()) {
+        throw Errors.validation('版本必填');
+      }
+      const next: Omit<Standard, 'createdAt' | 'updatedAt'> = {
         id,
-        code: b.code ? String(b.code) : existing.code,
-        name: b.name ? String(b.name) : existing.name,
-        version: b.version ? String(b.version) : existing.version,
-        description: b.description !== undefined ? (b.description ? String(b.description) : undefined) : existing.description,
+        code: b.code ? String(b.code).trim().toUpperCase() : existing.code,
+        name: b.name ? String(b.name).trim() : existing.name,
+        version: b.version ? String(b.version).trim() : existing.version,
+        description:
+          b.description !== undefined
+            ? b.description
+              ? String(b.description)
+              : undefined
+            : existing.description,
+      };
+      const standard = repos.standards.upsert(next);
+      getServices().repos.audit.insert({
+        userId: getServices().authz.getCurrentUser().id,
+        action: 'standard.update',
+        entityType: 'standard',
+        entityId: id,
+        before: existing,
+        after: next,
       });
       ok(reply, standard);
     } catch (e) {
@@ -78,10 +99,16 @@ export async function standardRoutes(app: FastifyInstance): Promise<void> {
       const repos = getServices().repos;
       const clauseCount = repos.clauses.countForStandard(id);
       if (clauseCount > 0) {
-        throw Object.assign(new Error(`该标准下还有 ${clauseCount} 条条款，不能删除`), { statusCode: 409, code: 9005 });
+        throw Errors.conflict(`该标准下还有 ${clauseCount} 条条款，不能删除`);
       }
       const deleted = repos.standards.delete(id);
-      if (!deleted) throw Object.assign(new Error('标准不存在'), { statusCode: 404, code: 9004 });
+      if (!deleted) throw Errors.notFound('标准', id);
+      getServices().repos.audit.insert({
+        userId: getServices().authz.getCurrentUser().id,
+        action: 'standard.delete',
+        entityType: 'standard',
+        entityId: id,
+      });
       ok(reply, { id, deleted: true });
     } catch (e) {
       handleError(reply, e);

@@ -155,9 +155,14 @@ export class ReportService {
     const isParent = (id: string) => allClauses.some((c) => c.parentId === id);
     const descendants = (id: string): Clause[] => {
       const out: Clause[] = [];
+      const seen = new Set<string>([id]);
       const walk = (pid: string) => {
         for (const c of allClauses) {
-          if (c.parentId === pid) { out.push(c); walk(c.clauseId); }
+          if (c.parentId === pid && !seen.has(c.clauseId)) {
+            seen.add(c.clauseId);
+            out.push(c);
+            walk(c.clauseId);
+          }
         }
       };
       walk(id);
@@ -297,17 +302,32 @@ export class ReportService {
     // Build a tree and render parent chapters bold with their leaves indented.
     const byId = new Map(clauses.map((c) => [c.clauseId, c]));
     const roots = clauses.filter((c) => !c.parentId || !byId.has(c.parentId));
+    const rendering = new Set<string>();
     const renderRow = (c: typeof clauses[number], depth: number): string => {
       const status = c.verdict ? (c.verdict.pass ? 'PASS' : 'FAIL') : 'NOT_COVERED';
       const color = status === 'PASS' ? '#16a34a' : status === 'FAIL' ? '#dc2626' : '#6b7280';
       const reason = c.verdict?.reason ? esc(c.verdict.reason) : (c.isParent ? '—' : '未执行 / 未覆盖');
       const indent = '&nbsp;'.repeat(depth * 4);
       const weight = c.isParent ? 'font-weight:700;background:#f9fafb;' : '';
-      const children = clauses
-        .filter((x) => x.parentId === c.clauseId)
-        .sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }))
-        .map((ch) => renderRow(ch, depth + 1))
-        .join('');
+      // Guard against cyclic parentId (defensive — writes reject cycles).
+      const children = rendering.has(c.clauseId)
+        ? ''
+        : clauses
+            .filter((x) => {
+              if (x.parentId !== c.clauseId) return false;
+              if (rendering.has(x.clauseId)) return false;
+              return true;
+            })
+            .sort((a, b) => a.clauseId.localeCompare(b.clauseId, undefined, { numeric: true }))
+            .map((ch) => {
+              rendering.add(c.clauseId);
+              try {
+                return renderRow(ch, depth + 1);
+              } finally {
+                rendering.delete(c.clauseId);
+              }
+            })
+            .join('');
       return `<tr style="${weight}">
         <td>${indent}${esc(c.clauseId)}</td><td>${esc(c.title)}</td><td>${esc(c.level)}</td>
         <td style="color:${color};font-weight:600">${status}</td>

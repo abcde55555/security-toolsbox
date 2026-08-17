@@ -119,6 +119,13 @@ export class CommandRunnerService {
     const body = parsed.data;
     const { tool, cmd } = this.toolAndCommand(toolId, commandId);
 
+    if (cmd.platforms && cmd.platforms.length > 0 && !cmd.platforms.includes(process.platform as 'linux' | 'darwin' | 'win32')) {
+      const labels: Record<string, string> = { linux: 'Linux', darwin: 'macOS', win32: 'Windows' };
+      const supported = cmd.platforms.map((p) => labels[p] ?? p).join('/');
+      const current = labels[process.platform] ?? process.platform;
+      throw Errors.validation(`该命令仅支持 ${supported}，当前系统为 ${current}`);
+    }
+
     const withDefaults = applyDefaults(cmd, body.params ?? {});
     const formErrors = validateFormValues(cmd.params, withDefaults);
     if (Object.keys(formErrors).length > 0) {

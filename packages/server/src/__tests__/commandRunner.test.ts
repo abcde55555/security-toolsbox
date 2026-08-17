@@ -126,6 +126,30 @@ describe('CommandRunnerService', () => {
     close();
   });
 
+  it('refuses to run a command whose platforms list excludes the current OS', () => {
+    const { repos, ctx, close } = makeContext();
+    const other = process.platform === 'win32' ? 'linux' : 'win32';
+    const tool = makeTool(repos, [
+      {
+        id: 'linuxonly',
+        name: 'linuxonly',
+        commandTemplate: 'echo hi',
+        params: [],
+        platforms: [other as 'linux' | 'win32'],
+      },
+    ]);
+    const runner = new CommandRunnerService(ctx);
+    try {
+      runner.start(tool.id, 'linuxonly', {});
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(AppError);
+      expect((e as AppError).code).toBe(9003);
+      expect((e as AppError).message).toMatch(/仅支持/);
+    }
+    close();
+  });
+
   it('lists runs filtered by projectId after attach', async () => {
     const { repos, ctx, close } = makeContext();
     const tool = makeTool(repos, [

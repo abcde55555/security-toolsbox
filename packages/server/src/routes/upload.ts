@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { uuid } from '@en18031/shared';
@@ -40,21 +40,31 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
       const absolutePath = path.join(UPLOAD_DIR, storedName);
 
       let size = 0;
-      let tooLarge = false;
+      const sizeLimitMsg = `文件超过大小限制 ${Math.round(maxBytes / (1024 * 1024))}MB`;
       data.file.on('data', (chunk: Buffer) => {
         size += chunk.length;
-        if (size > maxBytes) tooLarge = true;
+        if (size > maxBytes && !data.file.destroyed) {
+          // Stop streaming so we do not write a full oversized file to disk.
+          // Destroying with an error rejects `pipeline`, triggering cleanup.
+          data.file.destroy(new Error('FILE_TOO_LARGE'));
+        }
       });
 
       try {
         await pipeline(data.file, createWriteStream(absolutePath));
       } catch (e) {
+        await unlink(absolutePath).catch(() => undefined);
+        const status = (e as { statusCode?: number })?.statusCode;
+        if (size > maxBytes || status === 413) {
+          return fail(reply, 9003, sizeLimitMsg, 413);
+        }
         logger.warn({ err: e, originalName }, 'file upload stream failed');
         return fail(reply, 9003, '文件上传失败', 400);
       }
 
-      if (tooLarge || size > maxBytes) {
-        return fail(reply, 9003, `文件超过大小限制 ${Math.round(maxBytes / (1024 * 1024))}MB`, 413);
+      if (size > maxBytes) {
+        await unlink(absolutePath).catch(() => undefined);
+        return fail(reply, 9003, sizeLimitMsg, 413);
       }
 
       return reply.code(201).send({
