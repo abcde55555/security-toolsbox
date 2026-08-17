@@ -12,7 +12,8 @@ import type { Template, Tool, TemplateStep, FormField } from '@en18031/shared';
 import { TemplatesApi, ToolsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { categoryLabel, failureStrategyText, versionLockText } from '../utils/ui';
-import DynamicForm from '../components/DynamicForm';
+import StepParamBinder, { isBoundValue } from '../components/StepParamBinder';
+import type { TemplateVariable } from '@en18031/shared';
 
 const { Sider, Content } = Layout;
 const { TextArea } = Input;
@@ -25,17 +26,6 @@ interface StepForm {
   onFailure: string;
   params: Record<string, unknown>;
   paramsJson: string;
-}
-
-function fieldDefaults(fields: FormField[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of fields) {
-    if (f.value !== undefined) out[f.id] = f.value;
-    else if (f.type === 'checkbox') out[f.id] = false;
-    else if (f.type === 'multiselect') out[f.id] = [];
-    else out[f.id] = '';
-  }
-  return out;
 }
 
 function blankStep(n: number): StepForm {
@@ -73,6 +63,7 @@ export default function Templates() {
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const [stepForms, setStepForms] = useState<StepForm[]>([]);
+  const [varForms, setVarForms] = useState<TemplateVariable[]>([]);
   const stepSeq = useRef(1);
 
   const selected = templates.find((t) => t.id === selectedId);
@@ -112,6 +103,7 @@ export default function Templates() {
     form.setFieldsValue({ concurrencyLimit: 1 });
     stepSeq.current = 1;
     setStepForms([blankStep(stepSeq.current++)]);
+    setVarForms([]);
     setEditorOpen(true);
   };
 
@@ -124,6 +116,7 @@ export default function Templates() {
     });
     seedSeq(t.steps.map((s) => s.stepId));
     setStepForms(t.steps.map((s, i) => stepFromTemplate(s, `${t.id}-${i}`)));
+    setVarForms((t.variables ?? []).map((v) => ({ ...v })));
     setEditorOpen(true);
   };
 
@@ -151,11 +144,32 @@ export default function Templates() {
   const selectTool = (idx: number, toolId: string) => {
     const tool = toolById.get(toolId);
     const fields = tool?.formFields ?? [];
-    updateStep(idx, {
-      toolId,
-      params: fields.length > 0 ? fieldDefaults(fields) : {},
-      paramsJson: '{}',
-    });
+    // Fields without a default value are almost always per-target inputs (IP,
+    // port range, firmware path...); leave them empty so the binder defaults
+    // to "bind to a project variable" rather than pre-filling a fake value.
+    const params: Record<string, unknown> = {};
+    for (const f of fields) {
+      params[f.id] = f.value !== undefined ? f.value : f.type === 'checkbox' ? false : f.type === 'multiselect' ? [] : '';
+    }
+    updateStep(idx, { toolId, params, paramsJson: '{}' });
+  };
+
+  const addVariable = (v: TemplateVariable) => {
+    setVarForms((prev) => (prev.some((x) => x.name === v.name) ? prev : [...prev, v]));
+  };
+  const removeVariable = (name: string) => {
+    setVarForms((prev) => prev.filter((v) => v.name !== name));
+    // unbind any step param pointing at this variable
+    setStepForms((prev) =>
+      prev.map((s) => {
+        let changed = false;
+        const params = { ...s.params };
+        for (const [k, val] of Object.entries(params)) {
+          if (val === `{{project.${name}}}`) { params[k] = ''; changed = true; }
+        }
+        return changed ? { ...s, params } : s;
+      }),
+    );
   };
 
   const setParam = (idx: number, id: string, value: unknown) => {
@@ -178,6 +192,17 @@ export default function Templates() {
       let params: Record<string, unknown> = {};
       if (tool && tool.formFields.length > 0) {
         params = s.params;
+        // Warn (but do not block) when a required target field carries a
+        // real value instead of a project-variable binding.
+        for (const f of tool.formFields) {
+          if (!f.required) continue;
+          const v = params[f.id];
+          if (isBoundValue(v)) continue;
+          if (v === '' || v === undefined || v === null) continue;
+          if (f.format === 'ip' || f.format === 'cidr' || f.type === 'file' || /ip|host|target|目标/i.test(f.id + f.label)) {
+            message.warning(`步骤 ${i + 1} 的「${f.label}」填了具体值，通常应绑定项目变量`);
+          }
+        }
       } else {
         try { params = JSON.parse(s.paramsJson || '{}'); }
         catch { message.error(`步骤 ${i + 1} 的参数 JSON 格式错误`); return; }
@@ -196,7 +221,7 @@ export default function Templates() {
     const payload = {
       name: values.name,
       description: values.description,
-      variables: editing?.variables ?? [],
+      variables: varForms,
       concurrencyLimit: values.concurrencyLimit ?? 1,
       steps,
       toolRefs: Array.from(new Set(steps.map((st) => st.toolId))).map((toolId) => ({
@@ -387,6 +412,27 @@ export default function Templates() {
             <Select options={[1, 2, 3, 4].map((n) => ({ value: n, label: `${n} 个步骤并发` }))} style={{ width: 200 }} />
           </Form.Item>
         </Form>
+
+        <Card size="small" style={{ marginBottom: 12 }} title="项目变量">
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            项目创建后由审计员填写真实值（目标 IP、网段等）。步骤参数通过 <code>{'{{project.变量名}}'}</code> 引用。
+          </Typography.Text>
+          {varForms.length === 0 ? (
+            <Typography.Text type="secondary">尚未定义变量，可在下方步骤参数处点「新建变量」自动创建。</Typography.Text>
+          ) : (
+            varForms.map((v) => (
+              <Space key={v.name} style={{ display: 'flex', marginBottom: 6 }} align="center">
+                <Tag color="blue" className="mono">{`{{project.${v.name}}}`}</Tag>
+                <span>{v.label}</span>
+                <Tag>{v.type}</Tag>
+                {v.required && <Tag color="red">必填</Tag>}
+                {v.default !== undefined && <Typography.Text type="secondary">默认: {String(v.default)}</Typography.Text>}
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeVariable(v.name)} />
+              </Space>
+            ))
+          )}
+        </Card>
+
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
           <Typography.Text strong>执行步骤（顺序执行）</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>上移/下移调整顺序，依赖按顺序自动生成</Typography.Text>
@@ -427,13 +473,13 @@ export default function Templates() {
                     }))}
                   />
                   {hasForm ? (
-                    <div style={{ background: '#f8fafc', padding: 12, borderRadius: 6 }}>
-                      <DynamicForm
-                        fields={tool!.formFields}
-                        values={s.params}
-                        onChange={(id, v) => setParam(idx, id, v)}
-                      />
-                    </div>
+                    <StepParamBinder
+                      fields={tool!.formFields}
+                      params={s.params}
+                      variables={varForms}
+                      onChange={(id, v) => setParam(idx, id, v)}
+                      onAddVariable={addVariable}
+                    />
                   ) : tool ? (
                     <>
                       {isCommandManual && (

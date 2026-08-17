@@ -87,6 +87,44 @@ export class ClauseRepository {
     };
   }
 
+  update(
+    standardVersion: string,
+    clauseId: string,
+    patch: Partial<Pick<Clause, 'title' | 'description' | 'chapter' | 'level' | 'testingMethod' | 'defaultSeverity' | 'tags' | 'parentId'>>,
+  ): Clause | null {
+    const existing = this.get(standardVersion, clauseId);
+    if (!existing) return null;
+    const merged = { ...existing, ...patch };
+    const now = nowIso();
+    this.db
+      .prepare(
+        `UPDATE clauses SET chapter=?, title=?, description=?, level=?, testingMethod=?,
+           defaultSeverity=?, parentId=?, tags=?, updatedAt=?
+         WHERE standardVersion=? AND clauseId=?`,
+      )
+      .run(
+        merged.chapter,
+        merged.title,
+        merged.description,
+        merged.level,
+        merged.testingMethod ?? null,
+        merged.defaultSeverity,
+        merged.parentId ?? null,
+        toJson(merged.tags ?? []),
+        now,
+        standardVersion,
+        clauseId,
+      );
+    return this.get(standardVersion, clauseId);
+  }
+
+  delete(standardVersion: string, clauseId: string): boolean {
+    const result = this.db
+      .prepare('DELETE FROM clauses WHERE standardVersion=? AND clauseId=?')
+      .run(standardVersion, clauseId);
+    return result.changes > 0;
+  }
+
   listMappingRules(toolId?: string): ClauseMappingRule[] {
     const rows = toolId
       ? (this.db

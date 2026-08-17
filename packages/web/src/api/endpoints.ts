@@ -86,8 +86,21 @@ export const ProjectsApi = {
 };
 
 export const ClausesApi = {
-  list: (standardVersion = 'EN18031:2019', level?: string) =>
-    api.get<Clause[]>(`/clauses?standardVersion=${standardVersion}${level ? `&level=${level}` : ''}`),
+  list: (standardVersion = 'EN18031:2019', level?: string, chapter?: string) => {
+    let qs = `?standardVersion=${standardVersion}`;
+    if (level) qs += `&level=${level}`;
+    if (chapter) qs += `&chapter=${encodeURIComponent(chapter)}`;
+    return api.get<Clause[]>(`/clauses${qs}`);
+  },
+  get: (clauseId: string, standardVersion = 'EN18031:2019') =>
+    api.get<Clause>(`/clauses/${clauseId}?standardVersion=${standardVersion}`),
+  create: (body: unknown, standardVersion = 'EN18031:2019') =>
+    api.post<Clause>(`/clauses?standardVersion=${standardVersion}`, body),
+  update: (clauseId: string, body: unknown, standardVersion = 'EN18031:2019') =>
+    api.put<Clause>(`/clauses/${clauseId}?standardVersion=${standardVersion}`, body),
+  remove: (clauseId: string, standardVersion = 'EN18031:2019') =>
+    api.del<{ clauseId: string; deleted: boolean }>(`/clauses/${clauseId}?standardVersion=${standardVersion}`),
+  batchImport: (clauses: unknown[]) => api.post<{ imported: number }>('/clauses/batch-import', clauses),
   mappingRules: (toolId?: string) =>
     api.get<ClauseMappingRule[]>(`/clause-mapping-rules${toolId ? `?toolId=${toolId}` : ''}`),
   createMappingRule: (body: unknown) => api.post<ClauseMappingRule>('/clause-mapping-rules', body),

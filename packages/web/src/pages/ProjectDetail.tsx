@@ -47,8 +47,6 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState('flow');
   const [busy, setBusy] = useState(false);
   const [headerLoading, setHeaderLoading] = useState(true);
-  const [varsOpen, setVarsOpen] = useState(false);
-  const [varJson, setVarJson] = useState('{}');
   const [stepDetail, setStepDetail] = useState<StepRunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [report, setReport] = useState<import('@en18031/shared').Report | null>(null);
@@ -281,23 +279,6 @@ export default function ProjectDetail() {
     finally { setDetailLoading(false); }
   };
 
-  const openVars = () => {
-    setVarJson(JSON.stringify(project?.variables ?? {}, null, 2));
-    setVarsOpen(true);
-  };
-
-  const saveVars = async () => {
-    let vars: Record<string, unknown>;
-    try { vars = JSON.parse(varJson); }
-    catch { message.error('JSON 格式错误'); return; }
-    try {
-      await ProjectsApi.setVariables(id, vars);
-      message.success('变量已保存');
-      setVarsOpen(false);
-      const p = await ProjectsApi.get(id);
-      setProject(p);
-    } catch (e) { reportError(e); }
-  };
 
   const regenerateReport = async () => {
     setReportLoading(true);
@@ -356,7 +337,7 @@ export default function ProjectDetail() {
         </Space>
         <Space>
           <Button icon={<ReloadOutlined />} aria-label="刷新项目" onClick={() => void loadProject()}>刷新</Button>
-          <Button onClick={openVars}>变量配置</Button>
+          <Button onClick={() => setTab('vars')}>变量配置</Button>
           <Cascader
             placeholder="单独执行工具…"
             style={{ width: 200 }}
@@ -450,7 +431,7 @@ export default function ProjectDetail() {
               />
             ),
           },
-          { key: 'vars', label: '变量', children: <VariablesTab project={project} template={template} onEdit={openVars} /> },
+          { key: 'vars', label: '变量', children: <VariablesTab project={project} template={template} onSaved={(p) => setProject(p)} /> },
           { key: 'term', label: '终端', children: <TerminalTab logs={logs} /> },
           {
             key: 'cmdruns',
@@ -479,14 +460,6 @@ export default function ProjectDetail() {
           },
         ]}
       />
-
-      <Modal title="编辑项目变量" open={varsOpen} onCancel={() => setVarsOpen(false)} onOk={() => void saveVars()}
-        okText="保存" cancelText="取消" width={640}>
-        <Typography.Paragraph type="secondary">
-          变量将在执行时通过 Mustache 语法 <code>{'{{var}}'}</code> 替换到步骤参数中。
-        </Typography.Paragraph>
-        <TextArea rows={12} value={varJson} onChange={(e) => setVarJson(e.target.value)} className="mono" />
-      </Modal>
 
       <StepDetailDrawer
         detail={stepDetail}
