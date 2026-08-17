@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
+import multipart from '@fastify/multipart';
 import { Server as SocketIOServer } from 'socket.io';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +16,8 @@ import { projectRoutes } from './routes/projects.js';
 import { clauseRoutes } from './routes/clauses.js';
 import { reportRoutes } from './routes/reports.js';
 import { commandRunRoutes } from './routes/commandRuns.js';
+import { uploadRoutes } from './routes/upload.js';
+import { auditRoutes } from './routes/audit.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'unhandled promise rejection');
@@ -24,9 +27,10 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-function isLoopbackHost(host: string): boolean {
+function isAllowedHost(host: string | undefined): boolean {
+  if (!host) return false;
   const hostname = host.split(':')[0].replace(/^\[|\]$/g, '').toLowerCase();
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+  return config.allowedHosts.some((allowed) => allowed.toLowerCase() === hostname);
 }
 
 function corsOrigin(origin: string | undefined, cb: (err: Error | null, allow?: unknown) => void): void {
@@ -50,9 +54,17 @@ async function bootstrap(): Promise<void> {
 
   await app.register(cors, { origin: corsOrigin as never, credentials: true });
 
+  await app.register(multipart, {
+    limits: {
+      fileSize: config.uploadMaxBytes,
+      files: 1,
+    },
+  });
+
   app.addHook('onRequest', async (req, reply) => {
     const host = req.headers.host;
-    if (host && !isLoopbackHost(host) && config.host !== '0.0.0.0') {
+    if (host && !isAllowedHost(host)) {
+      logger.warn({ host, url: req.raw.url }, 'rejected request with unrecognized Host header');
       reply.code(403).send({ code: 9003, message: 'invalid host' });
     }
   });
@@ -69,13 +81,16 @@ async function bootstrap(): Promise<void> {
   await app.register(clauseRoutes);
   await app.register(reportRoutes);
   await app.register(commandRunRoutes);
+  await app.register(uploadRoutes);
+  await app.register(auditRoutes);
 
   const services = await initServices();
   try {
-    runSeed();
+    await runSeed();
     logger.info('种子数据已就绪');
   } catch (e) {
-    logger.warn({ err: e }, '种子数据执行失败（可忽略，若已存在）');
+    logger.error({ err: e }, '种子数据执行失败');
+    throw e;
   }
 
   const io = new SocketIOServer(app.server, {

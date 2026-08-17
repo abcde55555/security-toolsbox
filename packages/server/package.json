@@ -16,6 +16,7 @@
     "@en18031/modules": "workspace:*",
     "@en18031/shared": "workspace:*",
     "@fastify/cors": "^9.0.1",
+    "@fastify/multipart": "^8.3.0",
     "@fastify/static": "^7.0.4",
     "better-sqlite3": "^11.3.0",
     "exceljs": "^4.4.0",

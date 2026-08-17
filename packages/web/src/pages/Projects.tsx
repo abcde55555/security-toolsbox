@@ -1,41 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
-  Layout, Card, Button, Tag, Space, Typography, Empty, Spin, Modal, Form, Input, Select,
-  Table, message,
+  Layout, Card, Button, Tag, Space, Typography, Empty, Table, Modal, Form, Input, Select, Skeleton,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Project, Template, ProjectRun } from '@en18031/shared';
 import { ProjectsApi, TemplatesApi } from '../api/endpoints';
 import { reportError } from '../api/client';
-import { runStatusColor, runStatusText, projectStatusColor, projectStatusText } from '../utils/ui';
+import { runStatusColor, runStatusText, projectStatusColor, projectStatusText, isTerminalStatus } from '../utils/ui';
 
 const { Content } = Layout;
 const { TextArea } = Input;
 
+type ProjectWithRun = Project & { latestRun?: ProjectRun | null };
+
 export default function Projects() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectWithRun[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [latestRuns, setLatestRuns] = useState<Record<string, ProjectRun | undefined>>({});
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form] = Form.useForm();
+  const pollTimer = useRef<ReturnType<typeof setInterval>>();
 
   const load = async () => {
     setLoading(true);
     try {
+      // GET /api/projects now returns each project with its latestRun attached
+      // (single query), so no per-project fetch is needed.
       const [ps, ts] = await Promise.all([ProjectsApi.list(), TemplatesApi.list()]);
-      setProjects(ps);
+      setProjects(ps as ProjectWithRun[]);
       setTemplates(ts);
-      const runs: Record<string, ProjectRun | undefined> = {};
-      const results = await Promise.allSettled(ps.map((p) => ProjectsApi.get(p.id)));
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') runs[ps[i].id] = r.value.latestRun;
-      });
-      setLatestRuns(runs);
     } catch (e) {
       reportError(e);
     } finally {
@@ -43,10 +40,23 @@ export default function Projects() {
     }
   };
 
+  const hasActiveRun = (): boolean =>
+    projects.some((p) => p.latestRun && !isTerminalStatus(p.latestRun.status));
+
   useEffect(() => {
     void load();
     if (params.get('newFrom')) setOpen(true);
   }, []);
+
+  // Auto-refresh while any project has a non-terminal run.
+  useEffect(() => {
+    if (hasActiveRun()) {
+      pollTimer.current = setInterval(() => void load(), 5000);
+      return () => clearInterval(pollTimer.current);
+    }
+    clearInterval(pollTimer.current);
+    return undefined;
+  }, [projects]);
 
   const submit = async () => {
     const v = await form.validateFields();
@@ -60,7 +70,7 @@ export default function Projects() {
         targetComplianceLevel: v.level,
         variables: {},
       });
-      message.success('项目已创建');
+      Modal.success({ content: '项目已创建' });
       setOpen(false);
       form.resetFields();
       navigate(`/projects/${project.id}`);
@@ -68,6 +78,13 @@ export default function Projects() {
       reportError(e);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const keyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigate(`/projects/${id}`);
     }
   };
 
@@ -81,11 +98,22 @@ export default function Projects() {
         </Space>
       </Space>
 
-      {loading ? <Spin /> : projects.length === 0 ? <Empty description="暂无项目，请先创建" /> : (
+      {loading ? (
+        <Card><Skeleton active paragraph={{ rows: 5 }} /></Card>
+      ) : projects.length === 0 ? (
+        <Empty description="暂无项目，请先创建" />
+      ) : (
         <Table
           rowKey="id"
           dataSource={projects}
-          onRow={(p) => ({ onClick: () => navigate(`/projects/${p.id}`), style: { cursor: 'pointer' } })}
+          onRow={(p) => ({
+            onClick: () => navigate(`/projects/${p.id}`),
+            onKeyDown: (e) => keyDown(e, p.id),
+            style: { cursor: 'pointer' },
+            tabIndex: 0,
+            role: 'button',
+            'aria-label': `打开项目 ${p.name}`,
+          })}
           columns={[
             { title: '项目名称', dataIndex: 'name', render: (v, r) => (
               <Space direction="vertical" size={0}>
@@ -100,7 +128,7 @@ export default function Projects() {
             { title: '目标等级', dataIndex: 'targetComplianceLevel', render: (v: string) => <Tag color="blue">{v}</Tag> },
             { title: '状态', dataIndex: 'status', render: (v: string) => <Tag color={projectStatusColor[v] ?? 'default'}>{projectStatusText[v] ?? v}</Tag> },
             { title: '最近运行', key: 'run', render: (_, r) => {
-              const run = latestRuns[r.id];
+              const run = r.latestRun;
               if (!run) return <Typography.Text type="secondary">未运行</Typography.Text>;
               return <Tag color={runStatusColor[run.status]}>{runStatusText[run.status]} {run.progressPercent ?? 0}%</Tag>;
             } },

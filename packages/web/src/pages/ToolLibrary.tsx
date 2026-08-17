@@ -348,7 +348,7 @@ export default function ToolLibrary() {
                   命令 ({selected.commands!.length})
                 </Typography.Title>
                 {selected.commands!.map((c) => (
-                  <Card key={c.id} size="small" style={{ marginBottom: 10 }} bodyStyle={{ padding: 12 }}>
+                  <Card key={c.id} size="small" style={{ marginBottom: 10 }} styles={{ body: { padding: 12 } }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Space direction="vertical" size={2} style={{ flex: 1, minWidth: 0 }}>
                         <Space>

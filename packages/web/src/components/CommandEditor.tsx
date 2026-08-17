@@ -69,6 +69,24 @@ function coerceDefault(f: FormField, raw: string): unknown {
   return raw;
 }
 
+// 为参数行生成稳定的唯一 key
+function genRowId(): string {
+  return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+interface ParamRow {
+  rowId: string;
+  field: FormField;
+}
+
+function emptyParamRow(id: string): ParamRow {
+  return { rowId: genRowId(), field: { id, label: id, type: 'text', required: false } };
+}
+
+function commandToRows(cmd: ToolCommand): ParamRow[] {
+  return cmd.params.map((field) => ({ rowId: genRowId(), field: { ...field } }));
+}
+
 export default function CommandEditor({
   open, command, clauses, onSave, onCancel,
 }: {
@@ -79,9 +97,17 @@ export default function CommandEditor({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<ToolCommand>(newCommand());
+  const [rows, setRows] = useState<ParamRow[]>([]);
+  // 记录用户显式删除/关闭的参数 id，即使占位符仍存在也不自动重新添加
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (open) setDraft(command ? structuredClone(command) : newCommand());
+    if (open) {
+      const d = command ? structuredClone(command) : newCommand();
+      setDraft(d);
+      setRows(commandToRows(d));
+      setDismissed(new Set());
+    }
   }, [open, command]);
 
   const placeholders = useMemo(
@@ -89,17 +115,23 @@ export default function CommandEditor({
     [draft.commandTemplate],
   );
 
-  // auto-create a param row for every placeholder that lacks one
+  // 仅为新的、尚未被用户关闭的占位符自动创建参数行
   useEffect(() => {
-    setDraft((prev) => {
-      const ids = new Set(prev.params.map((p) => p.id));
-      const missing = placeholders.filter((ph) => !ids.has(ph));
+    setRows((prev) => {
+      const ids = new Set(prev.map((r) => r.field.id));
+      const missing = placeholders.filter((ph) => !ids.has(ph) && !dismissed.has(ph));
       if (missing.length === 0) return prev;
-      return { ...prev, params: [...prev.params, ...missing.map(emptyParam)] };
+      return [...prev, ...missing.map(emptyParamRow)];
     });
-  }, [placeholders]);
+  }, [placeholders, dismissed]);
 
-  const paramIds = draft.params.map((p) => p.id);
+  // 同步 rows -> draft.params，以便保存和预览使用
+  useEffect(() => {
+    setDraft((prev) => ({ ...prev, params: rows.map((r) => r.field) }));
+  }, [rows]);
+
+  const params = rows.map((r) => r.field);
+  const paramIds = params.map((p) => p.id);
   const duplicateIds = useMemo(() => {
     const seen = new Set<string>();
     const dups = new Set<string>();
@@ -108,15 +140,21 @@ export default function CommandEditor({
   }, [paramIds.join('|')]);
 
   const unusedParams = useMemo(
-    () => draft.params.filter((p) => !placeholders.includes(p.id)).map((p) => p.id),
-    [draft.params, placeholders],
+    () => params.filter((p) => !placeholders.includes(p.id)).map((p) => p.id),
+    [params, placeholders],
+  );
+
+  // 被用户删除但占位符仍存在的参数
+  const danglingPlaceholders = useMemo(
+    () => placeholders.filter((ph) => dismissed.has(ph) || !params.some((p) => p.id === ph)),
+    [placeholders, dismissed, params],
   );
 
   const defaults = useMemo(() => {
     const out: Record<string, unknown> = {};
-    for (const f of draft.params) out[f.id] = paramDefaultValue(f);
+    for (const f of params) out[f.id] = paramDefaultValue(f);
     return out;
-  }, [draft.params]);
+  }, [params]);
 
   const preview = useMemo(
     () => renderCommandTemplate(draft.commandTemplate, defaults, { rawKeys: draft.rawParams }),

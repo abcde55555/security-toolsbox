@@ -58,6 +58,49 @@ export class ProjectRepository {
     return rows.map((r) => this.mapProject(r));
   }
 
+  listWithLatestRun(workspaceId = 'default'): Array<Project & { latestRun: ProjectRun | null }> {
+    // Single query: each non-deleted project LEFT JOINed to its most recent run
+    // via a correlated subquery, avoiding an N+1 round trip per project.
+    const rows = this.db
+      .prepare(
+        `SELECT p.*, r.id AS r_id, r.projectId AS r_projectId, r.status AS r_status,
+                r.startedAt AS r_startedAt, r.finishedAt AS r_finishedAt, r.startedBy AS r_startedBy,
+                r.progressPercent AS r_progressPercent, r.eta AS r_eta, r.triggerMode AS r_triggerMode,
+                r.cancelRequested AS r_cancelRequested, r.snapshotVariables AS r_snapshotVariables
+         FROM projects p
+         LEFT JOIN project_runs r ON r.id = (
+           SELECT r2.id FROM project_runs r2
+           WHERE r2.projectId = p.id
+           ORDER BY r2.startedAt DESC, r2.rowid DESC
+           LIMIT 1
+         )
+         WHERE p.workspaceId = ? AND p.deletedAt IS NULL
+         ORDER BY p.updatedAt DESC`,
+      )
+      .all(workspaceId) as Record<string, unknown>[];
+    return rows.map((r) => {
+      const project = this.mapProject(r);
+      const latestRun = r.r_id ? this.mapRunPrefixed(r) : null;
+      return { ...project, latestRun };
+    });
+  }
+
+  private mapRunPrefixed(r: Record<string, unknown>): ProjectRun {
+    return {
+      id: String(r.r_id),
+      projectId: String(r.r_projectId),
+      status: String(r.r_status),
+      startedAt: r.r_startedAt ? String(r.r_startedAt) : undefined,
+      finishedAt: r.r_finishedAt ? String(r.r_finishedAt) : undefined,
+      startedBy: String(r.r_startedBy),
+      progressPercent: Number(r.r_progressPercent),
+      eta: r.r_eta ? String(r.r_eta) : undefined,
+      triggerMode: String(r.r_triggerMode),
+      cancelRequested: Boolean(r.r_cancelRequested),
+      snapshotVariables: parseJson<Record<string, unknown>>(r.r_snapshotVariables, {}),
+    };
+  }
+
   private mapProject(r: Record<string, unknown>): Project {
     return {
       id: String(r.id),

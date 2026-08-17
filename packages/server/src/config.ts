@@ -20,6 +20,8 @@ export interface AppConfig {
   executionTimeoutMs: number;
   logLevel: string;
   webDistDir: string;
+  allowedHosts: string[];
+  uploadMaxBytes: number;
 }
 
 function env(name: string, fallback?: string): string {
@@ -61,6 +63,11 @@ export const config: AppConfig = {
   executionTimeoutMs: envInt('EXECUTION_TIMEOUT_DEFAULT_MS', 30 * 60 * 1000),
   logLevel: env('LOG_LEVEL', 'info'),
   webDistDir: env('WEB_DIST_DIR', path.resolve(repoRoot, 'packages/web/dist')),
+  allowedHosts: env('ALLOWED_HOSTS', 'localhost,127.0.0.1,::1')
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean),
+  uploadMaxBytes: envInt('UPLOAD_MAX_BYTES', 200 * 1024 * 1024),
 };
 
 for (const dir of [

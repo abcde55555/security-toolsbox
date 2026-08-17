@@ -233,6 +233,14 @@ export default function Templates() {
     } catch (e) { reportError(e); }
   };
 
+  const confirmUpgrade = async (t: Template, toolId: string) => {
+    try {
+      await TemplatesApi.confirmUpgrade(t.id, toolId, true);
+      message.success('已锁定到当前工具版本');
+      await load();
+    } catch (e) { reportError(e); }
+  };
+
   const remove = async (t: Template) => {
     try {
       await TemplatesApi.remove(t.id);
@@ -304,8 +312,27 @@ export default function Templates() {
                 <Tag color="geekblue">并发上限 {selected.concurrencyLimit}</Tag>
                 <span>引用工具：</span>
                 {selected.toolRefs.map((r) => (
-                  <Tag key={r.toolId} color="blue">
-                    {toolName(r.toolId)} <span style={{ color: '#94a3b8' }}>· {versionLockText[r.toolVersionLock] ?? r.toolVersionLock}</span>
+                  <Tag
+                    key={r.toolId}
+                    color={r.upgradePending ? 'red' : 'blue'}
+                    style={r.upgradePending ? { borderStyle: 'dashed' } : undefined}
+                  >
+                    {toolName(r.toolId)}
+                    <span style={{ color: '#94a3b8', marginLeft: 4 }}>
+                      · {versionLockText[r.toolVersionLock] ?? r.toolVersionLock}
+                    </span>
+                    {r.upgradePending && (
+                      <Tooltip title="工具已升级，点击确认兼容性">
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: '0 4px', color: '#dc2626', fontWeight: 600 }}
+                          onClick={() => void confirmUpgrade(selected, r.toolId)}
+                        >
+                          升级确认
+                        </Button>
+                      </Tooltip>
+                    )}
                   </Tag>
                 ))}
               </Space>

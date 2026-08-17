@@ -11,7 +11,7 @@ import { Errors } from './errors.js';
 import { createCancelToken } from '../engine/cancelToken.js';
 import type { CancelToken } from '@en18031/shared';
 import { ClauseMappingService } from './clauseMappingService.js';
-import fs from 'node:fs';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from '../config.js';
@@ -323,7 +323,7 @@ export class OrchestratorService {
     }
   }
 
-  private driveScheduler(params: {
+  private async driveScheduler(params: {
     runId: string;
     projectId: string;
     templateId: string;
@@ -335,7 +335,7 @@ export class OrchestratorService {
     const { runId, projectId, templateId, steps, variables, concurrency } = params;
     const active = activeRuns.get(runId)!;
     const stepRunByStepId = this.latestStepRunMap(runId);
-    const stepOutputs = this.rebuildStepOutputs(steps, runId);
+    const stepOutputs = await this.rebuildStepOutputs(steps, runId);
     const terminalStatuses = new Set<StepRunStatus>([
       'success',
       'fail',
@@ -360,8 +360,32 @@ export class OrchestratorService {
       }
       const rawPercent = totalWeight > 0 ? Math.round((weighted / totalWeight) * 100) : 0;
       const percent = Math.max(0, Math.min(100, rawPercent));
-      this.ctx.repos.projects.updateRun(runId, { progressPercent: percent });
-      this.ctx.bus.emit('run:batchProgress', { projectId, runId, percent });
+      // ETA based on average duration of completed steps and remaining work.
+      let eta: string | undefined;
+      const completed = [...stepRunByStepId.values()].filter(
+        (sr) => sr.status === 'success' || sr.status === 'fail' || sr.status === 'skipped',
+      );
+      if (completed.length > 0) {
+        const knownDurations = completed.map((s) => s.durationMs).filter((d): d is number => typeof d === 'number');
+        if (knownDurations.length > 0) {
+          const avg = knownDurations.reduce((a, b) => a + b, 0) / knownDurations.length;
+          const remaining = steps.filter((s) => {
+            const sr = stepRunByStepId.get(s.stepId);
+            return sr && (sr.status === 'pending' || sr.status === 'running' || sr.status === 'scheduled');
+          }).length;
+          if (remaining > 0) {
+            eta = new Date(Date.now() + avg * remaining).toISOString();
+            this.ctx.repos.projects.updateRun(runId, { progressPercent: percent, eta });
+          } else {
+            this.ctx.repos.projects.updateRun(runId, { progressPercent: percent });
+          }
+        } else {
+          this.ctx.repos.projects.updateRun(runId, { progressPercent: percent });
+        }
+      } else {
+        this.ctx.repos.projects.updateRun(runId, { progressPercent: percent });
+      }
+      this.ctx.bus.emit('run:batchProgress', { projectId, runId, percent, eta });
     };
 
     return new Promise<void>((resolve) => {
@@ -474,10 +498,10 @@ export class OrchestratorService {
     });
   }
 
-  private rebuildStepOutputs(
+  private async rebuildStepOutputs(
     steps: TemplateStep[],
     runId: string,
-  ): Record<string, Record<string, unknown>> {
+  ): Promise<Record<string, Record<string, unknown>>> {
     const out: Record<string, Record<string, unknown>> = {};
     const latest = this.latestStepRunMap(runId);
     for (const step of steps) {
@@ -485,7 +509,7 @@ export class OrchestratorService {
       const sr = latest.get(step.stepId);
       if (!sr || sr.status !== 'success' || !sr.stdoutFileRef) continue;
       try {
-        const stdout = fs.readFileSync(sr.stdoutFileRef, 'utf8');
+        const stdout = await readFile(sr.stdoutFileRef, 'utf8');
         out[step.stepId] = this.extractExportVars(step, { stdout } as ExecutionResult);
       } catch {
         // ignore unreadable evidence; downstream steps will re-run or fail naturally
@@ -572,7 +596,7 @@ export class OrchestratorService {
         verdicts: [],
         error: { code: 'UNRESOLVED_PLACEHOLDER', message: subbed.missing.join(', ') },
       };
-      this.persistResult(stepRunId, projectId, runId, step.toolId, errResult);
+      await this.persistResult(stepRunId, projectId, runId, step.toolId, errResult);
       this.ctx.repos.projects.updateStepRun(stepRunId, {
         status: 'fail',
         finishedAt: nowIso(),
@@ -622,7 +646,7 @@ export class OrchestratorService {
       });
     }
 
-    this.persistResult(stepRunId, projectId, runId, step.toolId, result);
+    await this.persistResult(stepRunId, projectId, runId, step.toolId, result);
     this.ctx.repos.projects.updateStepRun(stepRunId, {
       status: result.status === 'success' ? 'success' : result.status === 'cancelled' ? 'cancelled' : result.status === 'timeout' ? 'timeout' : 'fail',
       exitCode: result.exitCode,
@@ -634,19 +658,19 @@ export class OrchestratorService {
     return result;
   }
 
-  private persistResult(
+  private async persistResult(
     stepRunId: string,
     projectId: string,
     runId: string,
     toolId: string,
     result: ExecutionResult,
-  ): void {
+  ): Promise<void> {
     const project = this.ctx.repos.projects.getById(projectId)!;
     const stdoutPath = path.join(config.filesDir, 'evidence', `${stepRunId}.stdout.log`);
     const stderrPath = path.join(config.filesDir, 'evidence', `${stepRunId}.stderr.log`);
-    fs.mkdirSync(path.dirname(stdoutPath), { recursive: true });
-    fs.writeFileSync(stdoutPath, result.stdout, 'utf8');
-    if (result.stderr) fs.writeFileSync(stderrPath, result.stderr, 'utf8');
+    await mkdir(path.dirname(stdoutPath), { recursive: true });
+    await writeFile(stdoutPath, result.stdout, 'utf8');
+    if (result.stderr) await writeFile(stderrPath, result.stderr, 'utf8');
     this.ctx.repos.projects.updateStepRun(stepRunId, {
       stdoutFileRef: stdoutPath,
       stderrFileRef: result.stderr ? stderrPath : undefined,
@@ -725,7 +749,7 @@ export class OrchestratorService {
         cancelToken: createCancelToken(),
       });
     }
-    this.persistResult(sr.id, projectId, run.id, toolId, result);
+    await this.persistResult(sr.id, projectId, run.id, toolId, result);
     const runStatus: 'success' | 'fail' | 'cancelled' =
       result.status === 'success'
         ? 'success'
@@ -758,9 +782,9 @@ export class OrchestratorService {
     return { runId: run.id, stepRunId: sr.id, result };
   }
 
-  fileHash(p: string): string {
+  async fileHash(p: string): Promise<string> {
     try {
-      return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+      return crypto.createHash('sha256').update(await readFile(p)).digest('hex');
     } catch {
       return '';
     }

@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { getServices } from '../services/index.js';
 import { ok, requireRole, handleError, pagingFromQuery } from './helpers.js';
-import fs from 'node:fs';
+import { readFile, access } from 'node:fs/promises';
 
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/projects', { preHandler: requireRole('auditor') }, async (_req, reply) => {
     try {
-      ok(reply, getServices().projects.list());
+      ok(reply, getServices().repos.projects.listWithLatestRun());
     } catch (e) {
       handleError(reply, e);
     }
@@ -141,11 +141,21 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       const verdicts = services.repos.results.listVerdictsByStepRun(stepRunId);
       let stdout = '';
       let stderr = '';
-      if (stepRun.stdoutFileRef && fs.existsSync(stepRun.stdoutFileRef)) {
-        stdout = fs.readFileSync(stepRun.stdoutFileRef, 'utf8').slice(-100000);
+      if (stepRun.stdoutFileRef) {
+        try {
+          await access(stepRun.stdoutFileRef);
+          stdout = (await readFile(stepRun.stdoutFileRef, 'utf8')).slice(-100000);
+        } catch {
+          // file may be absent; leave stdout empty
+        }
       }
-      if (stepRun.stderrFileRef && fs.existsSync(stepRun.stderrFileRef)) {
-        stderr = fs.readFileSync(stepRun.stderrFileRef, 'utf8').slice(-100000);
+      if (stepRun.stderrFileRef) {
+        try {
+          await access(stepRun.stderrFileRef);
+          stderr = (await readFile(stepRun.stderrFileRef, 'utf8')).slice(-100000);
+        } catch {
+          // file may be absent; leave stderr empty
+        }
       }
       ok(reply, { ...stepRun, evidences, verdicts, stdout, stderr });
     } catch (e) {

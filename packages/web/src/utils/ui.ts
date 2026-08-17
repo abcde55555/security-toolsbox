@@ -1,4 +1,4 @@
-import type { HealthStatus } from '@en18031/shared';
+import type { HealthStatus, FormField, ToolCommand } from '@en18031/shared';
 
 export const healthColor: Record<HealthStatus, string> = {
   green: '#16a34a',
@@ -201,3 +201,65 @@ export const healthLegend = [
   { status: 'red' as HealthStatus, text: healthText.red, color: healthColor.red },
   { status: 'unknown' as HealthStatus, text: healthText.unknown, color: healthColor.unknown },
 ];
+
+// 统一的终态状态集合
+const TERMINAL_STATUSES = new Set([
+  'success', 'fail', 'partial', 'cancelled', 'timeout', 'crash',
+]);
+
+export function isTerminalStatus(s?: string | null): boolean {
+  return !!s && TERMINAL_STATUSES.has(s);
+}
+
+// 将 stdout/stderr 文本拆分为行
+export function toLines(text: string, stream: 'stdout' | 'stderr') {
+  return text.split(/\r?\n/).filter((l) => l.length > 0).map((text) => ({ text, stream }));
+}
+
+// 从命令定义生成默认参数值
+export function defaultsFromCommand(cmd: ToolCommand): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of cmd.params) {
+    if (f.value !== undefined) out[f.id] = f.value;
+    else if (f.type === 'checkbox') out[f.id] = false;
+    else if (f.type === 'multiselect') out[f.id] = [];
+    else out[f.id] = '';
+  }
+  return out;
+}
+
+// 从表单字段定义生成默认值
+export function fieldDefaults(fields: FormField[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (f.value !== undefined) out[f.id] = f.value;
+    else if (f.type === 'checkbox') out[f.id] = false;
+    else if (f.type === 'multiselect') out[f.id] = [];
+    else out[f.id] = '';
+  }
+  return out;
+}
+
+// 单个字段的默认值
+export function paramDefaultValue(f: FormField): unknown {
+  if (f.value !== undefined) return f.value;
+  if (f.type === 'checkbox') return false;
+  if (f.type === 'multiselect') return [];
+  return '';
+}
+
+// 格式化 ETA 为人类可读
+export function formatEta(eta?: string | number | null): string {
+  if (eta === undefined || eta === null || eta === '') return '';
+  if (typeof eta === 'number') {
+    if (eta < 60) return `预计还需 ${Math.round(eta)} 秒`;
+    if (eta < 3600) return `预计还需 ${Math.round(eta / 60)} 分钟`;
+    const h = Math.floor(eta / 3600);
+    const m = Math.round((eta % 3600) / 60);
+    return `预计还需 ${h} 小时 ${m} 分钟`;
+  }
+  // ISO date string
+  const ms = new Date(eta).getTime() - Date.now();
+  if (ms <= 0) return '即将完成';
+  return formatEta(Math.round(ms / 1000));
+}

@@ -13,7 +13,7 @@ import type {
 
 export interface StepRunDetail extends StepRun {
   evidences: Array<{ id: string; type: string; content: string; severity: string; fileRef?: string; hash?: string; createdAt: string }>;
-  verdicts: Array<{ id: string; clauseId: string; pass: boolean; severity: string; reason: string; evidenceRefs: string[]; overridden: boolean }>;
+  verdicts: Array<{ id: string; clauseId: string; pass: boolean; severity: string; reason: string; evidenceRefs: string[]; overridden: boolean; overrideReason?: string }>;
   stdout: string;
   stderr: string;
 }
@@ -134,6 +134,43 @@ export const CommandRunsApi = {
   get: (runId: string) => api.get<CommandRunDetail>(`/command-runs/${runId}`),
   attach: (runId: string, body: { projectId: string; clauseId?: string; note?: string }) =>
     api.post<CommandRunDetail>(`/command-runs/${runId}/attach`, body),
+};
+
+export const UploadApi = {
+  upload: async (file: File, onProgress?: (percent: number) => void): Promise<{ path: string; url?: string; size: number }> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const form = new FormData();
+      form.append('file', file);
+      xhr.open('POST', '/api/upload');
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        try {
+          const json = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300 && json.code === 0) {
+            resolve(json.data);
+          } else {
+            reject(new Error(json.message || `上传失败 (${xhr.status})`));
+          }
+        } catch {
+          reject(new Error(`上传失败 (${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('网络错误，上传失败'));
+      xhr.send(form);
+    });
+  },
+};
+
+export const AuditLogsApi = {
+  list: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
+    const qs = q.toString();
+    return requestPaged<AuditLog>('GET', `/audit-logs${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export const ReportsApi = {

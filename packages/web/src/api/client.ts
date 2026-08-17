@@ -47,7 +47,13 @@ export async function requestPaged<T>(
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const json: ApiEnvelope<T[]> = await res.json();
+  const text = await res.text();
+  let json: ApiEnvelope<T[]>;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`服务器返回非 JSON 响应 (${res.status})`);
+  }
   if (!res.ok || (json.code !== 0 && json.code !== undefined)) {
     throw new Error(json.message || `请求失败 (${res.status})`);
   }

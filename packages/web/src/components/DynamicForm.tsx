@@ -1,6 +1,8 @@
-import { Form, Input, InputNumber, Select, Switch, Tooltip } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Form, Input, InputNumber, Select, Switch, Tooltip, Upload, Button, message } from 'antd';
+import { InfoCircleOutlined, UploadOutlined, FileOutlined } from '@ant-design/icons';
 import type { FormField, SelectOption } from '@en18031/shared';
+import { UploadApi } from '../api/endpoints';
 
 const { TextArea } = Input;
 
@@ -101,9 +103,7 @@ function renderControl(f: FormField, value: unknown, setValue: (v: unknown) => v
     case 'checkbox':
       return <Switch checked={Boolean(value)} onChange={(v) => setValue(v)} />;
     case 'file':
-      return (
-        <Input placeholder="文件/目录绝对路径" value={String(value ?? '')} onChange={(e) => setValue(e.target.value)} />
-      );
+      return <FileUploadField value={value} setValue={setValue} accept={f.accept} maxSizeMb={f.maxSizeMb} />;
     case 'text':
     default:
       return (
@@ -114,4 +114,74 @@ function renderControl(f: FormField, value: unknown, setValue: (v: unknown) => v
         />
       );
   }
+}
+
+function FileUploadField({
+  value,
+  setValue,
+  accept,
+  maxSizeMb,
+}: {
+  value: unknown;
+  setValue: (v: unknown) => void;
+  accept?: string;
+  maxSizeMb?: number;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const path = typeof value === 'string' ? value : '';
+
+  const handleUpload = async (file: File) => {
+    const maxBytes = (maxSizeMb ?? 200) * 1024 * 1024;
+    if (file.size > maxBytes) {
+      message.error(`文件超过大小限制 ${maxSizeMb ?? 200}MB`);
+      return false;
+    }
+    setUploading(true);
+    try {
+      const result = await UploadApi.upload(file);
+      setValue(result.path);
+      message.success('文件上传成功');
+    } catch {
+      message.error('文件上传失败');
+    } finally {
+      setUploading(false);
+    }
+    return false; // prevent antd default upload
+  };
+
+  if (path) {
+    return (
+      <Input
+        readOnly
+        value={path}
+        prefix={<FileOutlined />}
+        addonAfter={
+          <Button size="small" type="link" onClick={() => setValue('')}>
+            重新上传
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <Upload.Dragger
+      accept={accept}
+      showUploadList={false}
+      beforeUpload={handleUpload}
+      disabled={uploading}
+    >
+      <p className="ant-upload-drag-icon">
+        <UploadOutlined />
+      </p>
+      <p className="ant-upload-text" style={{ marginBottom: 4 }}>
+        {uploading ? '上传中…' : '点击或拖拽文件到此区域上传'}
+      </p>
+      {maxSizeMb && (
+        <p className="ant-upload-hint" style={{ fontSize: 12, color: '#94a3b8' }}>
+          单文件上限 {maxSizeMb}MB
+        </p>
+      )}
+    </Upload.Dragger>
+  );
 }

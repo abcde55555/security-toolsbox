@@ -1,6 +1,14 @@
 import fs from 'node:fs';
+import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import type { CommandRun, CommandRunDetail, ExecutionError, Tool, ToolCommand } from '@en18031/shared';
+import type {
+  CommandRun,
+  CommandRunDetail,
+  ExecutionError,
+  ExecutionResult,
+  Tool,
+  ToolCommand,
+} from '@en18031/shared';
 import {
   renderCommandTemplate,
   validateFormValues,
@@ -9,6 +17,7 @@ import {
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
 import { createCancelToken } from '../engine/cancelToken.js';
+import { ClauseMappingService } from './clauseMappingService.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -52,8 +61,10 @@ export class CommandRunnerService {
   private active = new Map<string, ActiveRun>();
   private runningCount = 0;
   private waitQueue: Array<() => void> = [];
+  private clauseMapping: ClauseMappingService;
 
   constructor(private ctx: ServiceContext) {
+    this.clauseMapping = new ClauseMappingService(ctx);
     this.reconcileOrphans();
   }
 
@@ -187,7 +198,7 @@ export class CommandRunnerService {
     try {
       await this.acquireSlot();
       slotAcquired = true;
-      fs.mkdirSync(runDir, { recursive: true });
+      await mkdir(runDir, { recursive: true });
       const out = fs.createWriteStream(stdoutPath, { flags: 'a' });
       const errStream = fs.createWriteStream(stderrPath, { flags: 'a' });
       stdoutStream = out;
@@ -262,6 +273,11 @@ export class CommandRunnerService {
         durationMs,
         stdoutPreview: finished.stdoutPreview,
       });
+
+      if (finished.projectId && finished.status === 'success') {
+        await this.processProjectResult(finished, tool, cmd, stdoutPath);
+      }
+
       return finished;
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -299,6 +315,140 @@ export class CommandRunnerService {
     } finally {
       this.active.delete(runId);
       this.releaseSlot();
+    }
+  }
+
+  /**
+   * When a command run is tied to a project and succeeds, anchor its output to
+   * a project run/step run, run clause mapping (producing evidence + verdicts),
+   * and regenerate the report. Mirrors OrchestratorService.persistResult flow.
+   */
+  private async processProjectResult(
+    run: CommandRun,
+    tool: Tool,
+    cmd: ToolCommand,
+    stdoutPath: string,
+  ): Promise<void> {
+    const projectId = run.projectId!;
+    try {
+      const project = this.ctx.repos.projects.getById(projectId);
+      if (!project) return;
+
+      const readBounded = async (p: string | undefined): Promise<string> => {
+        if (!p) return '';
+        try {
+          const buf = await readFile(p);
+          return buf.toString('utf8').slice(-DETAIL_TAIL_BYTES);
+        } catch {
+          return '';
+        }
+      };
+
+      const [stdout, stderr] = await Promise.all([
+        readBounded(stdoutPath),
+        readBounded(run.stderrFileRef),
+      ]);
+
+      // Create an anchoring project run + step run so evidence/verdicts have a home.
+      const projectRun = this.ctx.repos.projects.createRun({
+        projectId,
+        startedBy: run.createdBy,
+        snapshotVariables: {},
+        triggerMode: 'manual_command',
+      });
+      const stepId = `cmd-${cmd.id}`;
+      const stepSnapshot = {
+        stepId,
+        title: cmd.name,
+        toolId: tool.id,
+        params: run.params,
+        dependsOn: [],
+        onFailure: 'continue',
+        position: 0,
+      };
+      const sr = this.ctx.repos.projects.createStepRun({
+        projectRunId: projectRun.id,
+        stepId,
+        stepSnapshot,
+      });
+
+      const result: ExecutionResult = {
+        runId: run.id,
+        projectId,
+        stepId,
+        toolId: tool.id,
+        status: 'success',
+        exitCode: run.exitCode ?? 0,
+        stdout,
+        stderr,
+        durationMs: run.durationMs ?? 0,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt ?? new Date().toISOString(),
+        evidence: [
+          {
+            type: 'stdout_line',
+            content: stdout.slice(-8000) || '(无输出)',
+            severity: 'low',
+            path: stdoutPath,
+          },
+        ],
+        verdicts: [],
+      };
+
+      this.clauseMapping.processAndPersist({
+        projectId,
+        projectRunId: projectRun.id,
+        stepRunId: sr.id,
+        standardVersion: project.standardVersion,
+        toolId: tool.id,
+        result,
+        commandId: cmd.id,
+      });
+
+      // If the run was explicitly attached to a clause, record an evidence/verdict link.
+      if (run.clauseId) {
+        const clause = this.ctx.repos.clauses.get(project.standardVersion, run.clauseId);
+        if (clause) {
+          const evidence = this.ctx.repos.results.listEvidenceByStepRun(sr.id);
+          const evidenceId = evidence[0]?.id;
+          this.ctx.repos.results.insertVerdict({
+            stepRunId: sr.id,
+            projectRunId: projectRun.id,
+            projectId,
+            clauseId: run.clauseId,
+            pass: true,
+            severity: clause.defaultSeverity,
+            reason: run.note
+              ? `命令执行成功（手动关联）：${run.note}`
+              : '命令执行成功（手动关联条款）',
+            evidenceRefs: evidenceId ? [evidenceId] : [],
+            verdictGroup: run.id,
+          });
+          this.ctx.repos.projects.updateStepRun(sr.id, {
+            evidenceCount: evidence.length,
+          });
+        }
+      }
+
+      this.ctx.repos.projects.updateStepRun(sr.id, {
+        status: 'success',
+        exitCode: run.exitCode ?? 0,
+        durationMs: run.durationMs ?? 0,
+        finishedAt: run.finishedAt ?? new Date().toISOString(),
+        stdoutFileRef: stdoutPath,
+        stderrFileRef: run.stderrFileRef,
+        percent: 100,
+      });
+      this.ctx.repos.projects.updateRun(projectRun.id, {
+        status: 'success',
+        finishedAt: run.finishedAt ?? new Date().toISOString(),
+        progressPercent: 100,
+      });
+
+      const { reportService } = await import('./reportService.js');
+      await reportService.generateReport(projectId, projectRun.id);
+    } catch (e) {
+      logger.warn({ err: e, runId: run.id, projectId }, 'command run clause mapping/report failed');
     }
   }
 
