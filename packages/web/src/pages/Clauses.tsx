@@ -58,14 +58,17 @@ export default function Clauses() {
     if (!stdId) { setTree([]); return; }
     setLoading(true);
     try {
-      setTree(await ClausesApi.tree(stdId));
+      const nodes = await ClausesApi.tree(stdId);
+      setTree(nodes);
+      // 默认展开全部节点，深层编号也能直接看到
+      setExpandedKeys(collectKeys(nodes));
     } catch (e) { reportError(e); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { void loadStandards(); }, []);
   useEffect(() => { if (activeStd) void loadClauses(activeStd); }, [activeStd]);
-  useEffect(() => { setPage(1); setExpandedKeys([]); }, [activeStd]);
+  useEffect(() => { setPage(1); }, [activeStd]);
 
   const roots = useMemo(() => tree.filter((n) => !n.parentId), [tree]);
 
@@ -304,9 +307,10 @@ export default function Clauses() {
                 expandable={{
                   expandedRowKeys: expandedKeys,
                   onExpandedRowsChange: (keys) => setExpandedKeys(keys.map((k) => String(k))),
+                  indentSize: 16,
                 }}
                 columns={[
-                  { title: '编号', dataIndex: 'clauseId', width: 140, onCell: () => ({ style: { whiteSpace: 'nowrap' } }), render: (v: string, r) => (
+                  { title: '编号', dataIndex: 'clauseId', width: 220, onCell: () => ({ style: { whiteSpace: 'nowrap' } }), render: (v: string, r) => (
                     <Space>
                       <code className="mono">{v}</code>
                       {r.parentId ? null : <Tag color="geekblue">章节</Tag>}
