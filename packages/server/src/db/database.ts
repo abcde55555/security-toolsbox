@@ -397,6 +397,37 @@ const MIGRATIONS: {
     );
     `,
   },
+  {
+    id: 7,
+    name: 'compliance_clause_bindings',
+    sql: `
+    CREATE TABLE IF NOT EXISTS template_clause_bindings (
+      templateId TEXT NOT NULL,
+      clauseId TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 0,
+      aggregation TEXT NOT NULL DEFAULT '{"mode":"cross_check","strategy":"all_pass"}',
+      PRIMARY KEY (templateId, clauseId)
+    );
+    `,
+    run(database) {
+      const tableExists = (table: string): boolean =>
+        (database
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table) !== undefined);
+      const addCol = (table: string, col: string, def: string) => {
+        if (!tableExists(table)) return;
+        const cols = (database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+          (c) => c.name,
+        );
+        if (!cols.includes(col)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+      };
+      addCol('templates', 'mode', "TEXT NOT NULL DEFAULT 'ad-hoc'");
+      addCol('template_steps', 'clauseId', 'TEXT');
+      addCol('template_steps', 'verdictRule', 'TEXT');
+      addCol('template_steps', 'groupKey', 'TEXT');
+    },
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

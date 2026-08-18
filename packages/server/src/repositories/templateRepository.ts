@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import type { Template, TemplateStep, TemplateToolRef, TemplateVariable } from '@en18031/shared';
+import type { Template, TemplateStep, TemplateToolRef, TemplateVariable, TemplateClauseBinding, TemplateMode } from '@en18031/shared';
 import { uuid, nowIso } from '@en18031/shared';
 import { parseJson, toJson } from './json.js';
 import { Errors } from '../services/errors.js';
@@ -15,6 +15,8 @@ interface NewTemplate {
   concurrencyLimit?: number;
   steps?: TemplateStep[];
   toolRefs?: TemplateToolRef[];
+  mode?: TemplateMode;
+  clauseBindings?: TemplateClauseBinding[];
   parentTemplateId?: string;
   inheritParent?: boolean;
   createdBy: string;
@@ -29,9 +31,9 @@ export class TemplateRepository {
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO templates (id, workspaceId, name, description, icon, color, schemaVersion, variables,
+          `INSERT INTO templates (id, workspaceId, name, description, icon, color, schemaVersion, mode, variables,
             concurrencyLimit, parentTemplateId, inheritParent, revision, createdBy, createdAt, updatedAt)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .run(
           id,
@@ -41,6 +43,7 @@ export class TemplateRepository {
           input.icon ?? null,
           input.color ?? null,
           'v1',
+          input.mode ?? 'ad-hoc',
           toJson(input.variables ?? []),
           input.concurrencyLimit ?? 2,
           input.parentTemplateId ?? null,
@@ -50,6 +53,15 @@ export class TemplateRepository {
           now,
           now,
         );
+      if (input.clauseBindings?.length) {
+        const ins = this.db.prepare(
+          `INSERT INTO template_clause_bindings (templateId, clauseId, enabled, position, aggregation)
+           VALUES (?,?,?,?,?)`,
+        );
+        input.clauseBindings.forEach((b, i) => {
+          ins.run(id, b.clauseId, b.enabled ? 1 : 0, b.position ?? i, toJson(b.aggregation));
+        });
+      }
       for (const ref of input.toolRefs ?? []) {
         this.db
           .prepare(
@@ -81,8 +93,8 @@ export class TemplateRepository {
       .prepare(
         `INSERT INTO template_steps (id, templateId, stepId, title, toolId, toolVersion, interactionModeOverride,
           params, selectedCommands, dependsOn, onFailure, retry, retryBackoffMs, timeoutMs, exportVars, weight,
-          expandMode, ephemeral, position)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          expandMode, ephemeral, position, clauseId, verdictRule, groupKey)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         uuid(),
@@ -104,6 +116,9 @@ export class TemplateRepository {
         step.expandMode ?? 'cartesian',
         step.ephemeral ? 1 : 0,
         step.position ?? 0,
+        step.clauseId ?? null,
+        step.verdictRule ? toJson(step.verdictRule) : null,
+        step.groupKey ?? null,
       );
   }
 
@@ -138,6 +153,7 @@ export class TemplateRepository {
       icon: r.icon ? String(r.icon) : undefined,
       color: r.color ? String(r.color) : undefined,
       schemaVersion: String(r.schemaVersion),
+      mode: (r.mode as Template['mode']) ?? 'ad-hoc',
       variables: parseJson<TemplateVariable[]>(r.variables, []),
       concurrencyLimit: Number(r.concurrencyLimit),
       steps: steps.map((s) => ({
@@ -164,6 +180,11 @@ export class TemplateRepository {
         expandMode: String(s.expandMode) as TemplateStep['expandMode'],
         ephemeral: Boolean(s.ephemeral),
         position: Number(s.position),
+        clauseId: s.clauseId ? String(s.clauseId) : null,
+        verdictRule: s.verdictRule
+          ? (parseJson(s.verdictRule, null) as TemplateStep['verdictRule'])
+          : undefined,
+        groupKey: s.groupKey ? String(s.groupKey) : null,
       })),
       toolRefs: refs.map((rf) => ({
         toolId: String(rf.toolId),
@@ -173,6 +194,7 @@ export class TemplateRepository {
         stepParams: rf.stepParams ? parseJson<Record<string, unknown>>(rf.stepParams, {}) : undefined,
         upgradePending: Boolean(rf.upgradePending),
       })),
+      clauseBindings: this.getClauseBindings(id),
       parentTemplateId: r.parentTemplateId ? String(r.parentTemplateId) : undefined,
       inheritParent: Boolean(r.inheritParent),
       revision: Number(r.revision),
@@ -194,7 +216,7 @@ export class TemplateRepository {
     const tx = this.db.transaction(() => {
       const info = this.db
         .prepare(
-          `UPDATE templates SET name=?, description=?, icon=?, color=?, variables=?, concurrencyLimit=?,
+          `UPDATE templates SET name=?, description=?, icon=?, color=?, mode=?, variables=?, concurrencyLimit=?,
              parentTemplateId=?, inheritParent=?, revision=revision+1, updatedAt=?
              WHERE id=?${expectedRevision !== undefined ? ' AND revision=?' : ''}`,
         )
@@ -203,6 +225,7 @@ export class TemplateRepository {
           patch.description ?? existing.description ?? null,
           patch.icon ?? existing.icon ?? null,
           patch.color ?? existing.color ?? null,
+          patch.mode ?? existing.mode ?? 'ad-hoc',
           toJson(patch.variables ?? existing.variables),
           patch.concurrencyLimit ?? existing.concurrencyLimit,
           patch.parentTemplateId ?? existing.parentTemplateId ?? null,
@@ -239,6 +262,9 @@ export class TemplateRepository {
         this.db.prepare('DELETE FROM template_steps WHERE templateId = ?').run(id);
         patch.steps.forEach((s, i) => this.insertStep(id, { ...s, position: i }));
       }
+      if (patch.clauseBindings) {
+        this.setClauseBindings(id, patch.clauseBindings);
+      }
     });
     tx();
     return this.getById(id);
@@ -258,6 +284,40 @@ export class TemplateRepository {
     this.db
       .prepare('UPDATE template_tools SET upgradePending = 0 WHERE templateId = ? AND toolId = ?')
       .run(templateId, toolId);
+  }
+
+  getClauseBindings(templateId: string): TemplateClauseBinding[] {
+    const rows = this.db
+      .prepare(
+        'SELECT clauseId, enabled, position, aggregation FROM template_clause_bindings WHERE templateId = ? ORDER BY position ASC',
+      )
+      .all(templateId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      clauseId: String(r.clauseId),
+      enabled: Boolean(r.enabled),
+      position: Number(r.position),
+      aggregation: parseJson(r.aggregation, { mode: 'cross_check', strategy: 'all_pass' }) as TemplateClauseBinding['aggregation'],
+    }));
+  }
+
+  setClauseBindings(templateId: string, bindings: TemplateClauseBinding[]): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM template_clause_bindings WHERE templateId = ?').run(templateId);
+      const ins = this.db.prepare(
+        `INSERT INTO template_clause_bindings (templateId, clauseId, enabled, position, aggregation)
+         VALUES (?,?,?,?,?)`,
+      );
+      bindings.forEach((b, i) => {
+        ins.run(templateId, b.clauseId, b.enabled ? 1 : 0, b.position ?? i, toJson(b.aggregation));
+      });
+    });
+    tx();
+  }
+
+  setMode(templateId: string, mode: Template['mode']): void {
+    this.db
+      .prepare('UPDATE templates SET mode = ?, updatedAt = ? WHERE id = ?')
+      .run(mode, nowIso(), templateId);
   }
 
   softDelete(id: string): void {

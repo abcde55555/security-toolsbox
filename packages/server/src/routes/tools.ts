@@ -144,6 +144,23 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // List which clause verdicts a module tool declares it can produce (from
+  // module.config.clauses). Used by the step verdict-rule editor.
+  app.get('/api/tools/:id/verdict-capabilities', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const tool = getServices().repos.tools.getById(id);
+      if (!tool) throw Errors.notFound('工具', id);
+      ok(reply, {
+        toolId: id,
+        interactionMode: tool.interactionMode,
+        clauses: tool.clauses ?? [],
+      });
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
   // Test-run a single command (from the command editor) without persisting it.
   // Body: { commandTemplate, params, timeoutMs, toolId? }. Substitutes params
   // into the template, executes, and returns stdout/stderr/exitCode plus which

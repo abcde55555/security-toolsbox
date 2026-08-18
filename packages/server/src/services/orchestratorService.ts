@@ -4,13 +4,17 @@ import type {
   StepRun,
   StepRunStatus,
   TemplateStep,
+  ToolCommand,
 } from '@en18031/shared';
+
+type ToolCommandLike = Pick<ToolCommand, 'id' | 'commandTemplate'>;
 import { substituteObject, nowIso } from '@en18031/shared';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
 import { createCancelToken } from '../engine/cancelToken.js';
 import type { CancelToken } from '@en18031/shared';
 import { ClauseMappingService } from './clauseMappingService.js';
+import { evaluateStepVerdict, aggregateClause } from './verdictEvaluator.js';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -118,6 +122,7 @@ export class OrchestratorService {
       after: { projectId, stepCount: steps.length },
     });
 
+    if (template.mode === 'compliance') this.initComplianceRun(run.id);
     void this.executeRun(run.id, projectId, template.id, steps, variables, templateDefaults, options.concurrencyOverride ?? template.concurrencyLimit)
       .catch((err) => logger.error({ err, runId: run.id }, 'executeRun rejected'));
     return this.ctx.repos.projects.getRun(run.id)!;
@@ -305,15 +310,31 @@ export class OrchestratorService {
     templateDefaults: Record<string, unknown>,
     concurrency: number,
   ): Promise<void> {
+    const template = this.ctx.repos.templates.getById(templateId);
+    const complianceSteps = template?.mode === 'compliance' ? steps.filter((s) => s.clauseId) : [];
+
+    // In compliance mode, deduplicate steps sharing a groupKey under the same
+    // clause: only the first (by position) actually executes; the rest reuse
+    // its result via dependsOn.
+    let effectiveSteps = steps;
+    if (complianceSteps.length > 0) {
+      effectiveSteps = this.dedupeGroupedSteps(steps);
+    }
+
     await this.driveScheduler({
       runId,
       projectId,
       templateId,
-      steps,
+      steps: effectiveSteps,
       variables,
       templateDefaults,
       concurrency,
     });
+
+    // Compliance mode: aggregate per-step verdict signals into clause verdicts.
+    if (complianceSteps.length > 0) {
+      await this.finalizeComplianceVerdicts(runId, projectId, effectiveSteps);
+    }
 
     try {
       const reportService = (await import('./reportService.js')).reportService;
@@ -322,6 +343,142 @@ export class OrchestratorService {
       this.ctx.bus.emit('run:logLine', { projectId, runId, line: `[警告] 报告生成失败: ${(e as Error).message}` });
     }
   }
+
+  /**
+   * For steps sharing (clauseId, groupKey), keep the first and make the rest
+   * depend on it (so they run after), while marking them ephemeral so the
+   * executor knows to reuse the cached result instead of re-running.
+   */
+  private dedupeGroupedSteps(steps: TemplateStep[]): TemplateStep[] {
+    const seen = new Map<string, string>(); // key -> stepId to reuse
+    return steps.map((s) => {
+      if (!s.clauseId || !s.groupKey) return s;
+      const key = `${s.clauseId}::${s.groupKey}`;
+      const owner = seen.get(key);
+      if (!owner) {
+        seen.set(key, s.stepId);
+        return s;
+      }
+      // Reuse: depend on the owner and mark ephemeral.
+      return {
+        ...s,
+        dependsOn: Array.from(new Set([...(s.dependsOn ?? []), owner])),
+        ephemeral: true,
+      };
+    });
+  }
+
+  /** Per-run, per-stepId pass/fail signals accumulated during compliance runs. */
+  private complianceSignals = new Map<string, Map<string, { pass: boolean; severity?: import('@en18031/shared').Severity; reason: string }>>();
+  /** Per-run, stepIds skipped because an upstream dependency failed. */
+  private complianceSkipped = new Map<string, Set<string>>();
+
+  private initComplianceRun(runId: string): void {
+    this.complianceSignals.set(runId, new Map());
+    this.complianceSkipped.set(runId, new Set());
+  }
+
+  /**
+   * After a compliance step finishes, evaluate its verdictRule and record a
+   * per-clause signal. Called from executeSingleStep.
+   */
+  private recordComplianceSignal(
+    runId: string,
+    step: TemplateStep,
+    result: ExecutionResult,
+    status: string,
+  ): void {
+    if (!step.clauseId) return;
+    const signals = this.complianceSignals.get(runId);
+    if (!signals) return;
+    // Ephemeral (deduplicated) steps reuse their owner's signal.
+    if (step.ephemeral) return;
+    if (status !== 'success') {
+      this.complianceSkipped.get(runId)?.add(step.stepId);
+    }
+    const signal = evaluateStepVerdict(step.verdictRule, result);
+    if (signal) signals.set(step.stepId, signal);
+  }
+
+  /**
+   * After all steps finish, aggregate per-clause signals into clause verdicts
+   * and persist them.
+   */
+  private async finalizeComplianceVerdicts(
+    runId: string,
+    projectId: string,
+    steps: TemplateStep[],
+  ): Promise<void> {
+    const project = this.ctx.repos.projects.getById(projectId);
+    if (!project) return;
+    const template = this.ctx.repos.templates.getById(project.templateId);
+    const signals = this.complianceSignals.get(runId) ?? new Map();
+    const skipped = this.complianceSkipped.get(runId) ?? new Set();
+    const stepRuns = this.ctx.repos.projects.listStepRuns(runId);
+    const stepRunByStepId = new Map<string, StepRun>(stepRuns.map((sr) => [sr.stepId, sr]));
+
+    // Map groupKey -> owner stepId, for ephemeral steps to reuse signals.
+    const byClause = new Map<string, TemplateStep[]>();
+    for (const s of steps) {
+      if (!s.clauseId) continue;
+      const arr = byClause.get(s.clauseId) ?? [];
+      arr.push(s);
+      byClause.set(s.clauseId, arr);
+    }
+
+    for (const [clauseId, clauseSteps] of byClause) {
+      const binding = template?.clauseBindings.find((b) => b.clauseId === clauseId);
+      const aggregation = binding?.aggregation ?? { mode: 'cross_check', strategy: 'all_pass' as const };
+      const clauseSignals: Array<{ pass: boolean; severity?: import('@en18031/shared').Severity; reason: string }> = [];
+      const clauseSkipped: string[] = [];
+
+      for (const step of clauseSteps) {
+        if (step.ephemeral) {
+          // Reuse the owner step's signal (same clause + groupKey).
+          const ownerId = step.dependsOn?.find((d) => {
+            const o = steps.find((x) => x.stepId === d);
+            return !!o && o.clauseId === step.clauseId && o.groupKey === step.groupKey && !o.ephemeral;
+          });
+          if (ownerId && signals.has(ownerId)) clauseSignals.push(signals.get(ownerId)!);
+          continue;
+        }
+        if (skipped.has(step.stepId)) {
+          clauseSkipped.push(step.title);
+          continue;
+        }
+        const sig = signals.get(step.stepId);
+        if (sig) clauseSignals.push(sig);
+        else if (stepRunByStepId.get(step.stepId)?.status !== 'success') {
+          clauseSkipped.push(step.title);
+        }
+      }
+
+      const verdict = aggregateClause(aggregation, clauseSignals, clauseSkipped);
+      const firstStepRun = clauseSteps
+        .map((s) => stepRunByStepId.get(s.stepId))
+        .find((sr): sr is StepRun => !!sr?.id);
+      this.ctx.repos.results.insertVerdict({
+        stepRunId: firstStepRun?.id ?? '',
+        projectRunId: runId,
+        projectId,
+        clauseId,
+        pass: verdict.pass,
+        severity: verdict.severity ?? 'middle',
+        reason: verdict.reason,
+        evidenceRefs: [],
+        overridden: false,
+        verdictGroup: `clause:${clauseId}`,
+      });
+      this.ctx.bus.emit('run:logLine', {
+        projectId, runId,
+        line: `[条款 ${clauseId}] ${verdict.pass ? '✓ 通过' : '✗ 不通过'}: ${verdict.reason}`,
+      });
+    }
+
+    this.complianceSignals.delete(runId);
+    this.complianceSkipped.delete(runId);
+  }
+
 
   private async driveScheduler(params: {
     runId: string;
@@ -661,7 +818,7 @@ export class OrchestratorService {
         timeoutMs: step.timeoutMs,
       });
     } else {
-      const command = this.buildCommand(step, params);
+      const command = this.buildCommandForStep(tool, step, params);
       result = await this.ctx.engine.runCommand(command, {
         projectId,
         stepId: step.stepId,
@@ -672,15 +829,20 @@ export class OrchestratorService {
       });
     }
 
-    await this.persistResult(stepRunId, projectId, runId, step.toolId, result);
+    const finalStatus = result.status === 'success' ? 'success' : result.status === 'cancelled' ? 'cancelled' : result.status === 'timeout' ? 'timeout' : 'fail';
+    await this.persistResult(stepRunId, projectId, runId, step.toolId, result, !!step.verdictRule && !!step.clauseId);
     this.ctx.repos.projects.updateStepRun(stepRunId, {
-      status: result.status === 'success' ? 'success' : result.status === 'cancelled' ? 'cancelled' : result.status === 'timeout' ? 'timeout' : 'fail',
+      status: finalStatus,
       exitCode: result.exitCode,
       durationMs: result.durationMs,
       finishedAt: nowIso(),
       percent: 100,
       error: result.error,
     });
+    // Compliance mode: record this step's verdict signal for clause aggregation.
+    if (step.clauseId) {
+      this.recordComplianceSignal(runId, step, result, finalStatus);
+    }
     return result;
   }
 
@@ -690,6 +852,7 @@ export class OrchestratorService {
     runId: string,
     toolId: string,
     result: ExecutionResult,
+    skipMapping = false,
   ): Promise<void> {
     const project = this.ctx.repos.projects.getById(projectId)!;
     const stdoutPath = path.join(config.filesDir, 'evidence', `${stepRunId}.stdout.log`);
@@ -701,14 +864,18 @@ export class OrchestratorService {
       stdoutFileRef: stdoutPath,
       stderrFileRef: result.stderr ? stderrPath : undefined,
     });
-    this.clauseMapping.processAndPersist({
-      projectId,
-      projectRunId: runId,
-      stepRunId,
-      standardVersion: project.standardVersion,
-      toolId,
-      result,
-    });
+    // In compliance mode with an explicit step verdictRule, we evaluate
+    // verdicts ourselves; skip the tool-level mapping rules to avoid dupes.
+    if (!skipMapping) {
+      this.clauseMapping.processAndPersist({
+        projectId,
+        projectRunId: runId,
+        stepRunId,
+        standardVersion: project.standardVersion,
+        toolId,
+        result,
+      });
+    }
   }
 
   async runToolManually(
@@ -814,6 +981,47 @@ export class OrchestratorService {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Build a shell command for a cmd-mode step. If the tool defines named
+   * commands and the step selects one (selectedCommands), render that command's
+   * template with the (already-substituted) params. Otherwise fall back to the
+   * legacy path+flags behaviour.
+   */
+  private buildCommandForStep(
+    tool: { path?: string; commands?: ToolCommandLike[] },
+    step: TemplateStep,
+    params: Record<string, unknown>,
+  ): string {
+    const cmd = this.resolveToolCommand(tool, step);
+    if (cmd) {
+      // Render {{param}} placeholders from the already-substituted params.
+      let rendered = cmd.commandTemplate;
+      rendered = rendered.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (_m, key) =>
+        params[key] !== undefined && params[key] !== null ? String(params[key]) : '',
+      );
+      // Prepend tool path if the command template does not already start with it.
+      if (tool.path && !rendered.startsWith(tool.path)) {
+        rendered = `${tool.path} ${rendered}`.trim();
+      }
+      return rendered;
+    }
+    return this.buildCommand(step, params);
+  }
+
+  private resolveToolCommand(
+    tool: { commands?: ToolCommandLike[] },
+    step: TemplateStep,
+  ): ToolCommandLike | undefined {
+    if (!tool.commands || tool.commands.length === 0) return undefined;
+    const sel = step.selectedCommands;
+    if (Array.isArray(sel) && sel.length > 0) {
+      return tool.commands.find((c) => c.id === sel[0]);
+    }
+    if (sel === 'all') return tool.commands[0];
+    // Default: first command.
+    return tool.commands[0];
   }
 
   private buildCommand(step: TemplateStep, params: Record<string, unknown>): string {

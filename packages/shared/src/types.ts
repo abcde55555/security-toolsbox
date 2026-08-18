@@ -238,6 +238,62 @@ export interface ExportVarRule {
   [key: string]: unknown;
 }
 
+/**
+ * How a single step's execution result maps to a pass/fail signal for its
+ * clause. Module tools return their own verdicts; command tools use these
+ * rules against their exit code / output.
+ */
+export type StepVerdictRule =
+  | {
+      kind: 'module';
+      /** Module returns multiple verdicts; use the one whose clauseId matches. */
+      mapClauseId?: string;
+    }
+  | {
+      kind: 'command';
+      passOnExitCode?: number;
+      passOnOutputContains?: string;
+      passOnOutputRegex?: string;
+      failOnExitCode?: number;
+      failOnOutputContains?: string;
+      failOnOutputRegex?: string;
+      severity?: Severity;
+    };
+
+/** How the steps under a clause combine into the clause verdict. */
+export type ClauseAggregation =
+  | {
+      /** Independent/parallel checks; combine by a voting strategy. */
+      mode: 'cross_check';
+      strategy: 'all_pass' | 'any_pass' | 'any_fail' | 'majority';
+      /** Fallback severity when a step fails but produces no specific one. */
+      severity?: Severity;
+    }
+  | {
+      /**
+       * Sequential chain: steps run in dependsOn order, outputs flow between
+       * them. A single final condition evaluates the combined results. If an
+       * upstream step fails, dependents are skipped and the clause fails.
+       */
+      mode: 'chain';
+      finalVerdict: FinalVerdictRule;
+    };
+
+/** Simple, visual final-verdict condition for a chain (P1; expressions later). */
+export interface FinalVerdictRule {
+  /** All these conditions must hold for the clause to pass. */
+  passAll?: FinalCondition[];
+  /** Any of these fails the clause. */
+  failAny?: FinalCondition[];
+  severity?: Severity;
+  reason?: string;
+}
+
+export type FinalCondition =
+  | { type: 'exit_code'; step: string; op: 'eq' | 'ne'; value: number }
+  | { type: 'output_contains'; step: string; value: string; negate?: boolean }
+  | { type: 'output_regex'; step: string; value: string; negate?: boolean };
+
 export interface TemplateStep {
   stepId: string;
   title: string;
@@ -256,7 +312,26 @@ export interface TemplateStep {
   expandMode?: 'cartesian' | 'for_each_json';
   ephemeral?: boolean;
   position: number;
+  /** Clause this step contributes to. NULL in ad-hoc mode. */
+  clauseId?: string | null;
+  /** How this step's result is judged for its clause (compliance mode). */
+  verdictRule?: StepVerdictRule | null;
+  /**
+   * Steps with the same non-empty groupKey under a clause share one execution
+   * (cached result), so a tool whose output feeds multiple checks runs once.
+   */
+  groupKey?: string | null;
 }
+
+/** A clause selected for coverage in a compliance-mode template. */
+export interface TemplateClauseBinding {
+  clauseId: string;
+  enabled: boolean;
+  position: number;
+  aggregation: ClauseAggregation;
+}
+
+export type TemplateMode = 'ad-hoc' | 'compliance';
 
 export interface TemplateToolRef {
   toolId: string;
@@ -275,10 +350,14 @@ export interface Template {
   icon?: string;
   color?: string;
   schemaVersion: string;
+  /** ad-hoc: free-form tool list; compliance: steps are grouped under clauses. */
+  mode: TemplateMode;
   variables: TemplateVariable[];
   concurrencyLimit: number;
   steps: TemplateStep[];
   toolRefs: TemplateToolRef[];
+  /** Clauses selected for coverage (compliance mode). Aggregation per clause. */
+  clauseBindings: TemplateClauseBinding[];
   parentTemplateId?: string;
   inheritParent?: boolean;
   revision: number;
