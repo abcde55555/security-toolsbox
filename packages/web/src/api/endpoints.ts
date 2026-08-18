@@ -155,7 +155,39 @@ export const ProjectsApi = {
     ),
   preflight: (id: string) =>
     api.get<PreflightResult>(`/projects/${id}/preflight`),
+  executions: (id: string, params: { page?: number; pageSize?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set('page', String(params.page));
+    if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+    const q = qs.toString();
+    return requestPaged<UnifiedExecution>(
+      'GET',
+      `/projects/${id}/executions${q ? `?${q}` : ''}`,
+    );
+  },
 };
+
+export interface UnifiedExecution {
+  id: string;
+  source: 'orchestration' | 'manual';
+  runId: string;
+  stepId?: string;
+  title: string;
+  toolId?: string;
+  toolName: string;
+  commandName?: string;
+  status: string;
+  exitCode?: number;
+  durationMs?: number;
+  startedAt?: string;
+  stdoutFileRef?: string;
+  stderrFileRef?: string;
+  verdictCount: number;
+  evidenceCount: number;
+  clauseId?: string;
+  resolvedCommand?: string;
+  error?: { message?: string } | { message?: string };
+}
 
 export interface PreflightTool {
   toolId: string;

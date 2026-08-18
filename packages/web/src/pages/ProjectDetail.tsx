@@ -24,7 +24,7 @@ import RunCommandModal from '../components/RunCommandModal';
 import FlowTab from '../components/project/FlowTab';
 import VariablesTab from '../components/project/VariablesTab';
 import TerminalTab, { type LogLine } from '../components/project/TerminalTab';
-import CommandRunsTab from '../components/project/CommandRunsTab';
+import ProjectExecutions from '../components/project/ProjectExecutions';
 import AuditTab from '../components/project/AuditTab';
 import ReportTab from '../components/project/ReportTab';
 import StepDetailDrawer from '../components/project/StepDetailDrawer';
@@ -439,7 +439,7 @@ export default function ProjectDetail() {
           {
             key: 'cmdruns',
             label: '工具执行记录',
-            children: <CommandRunsTab projectId={id} version={cmdRunsVersion} />,
+            children: <ProjectExecutions projectId={id} refreshKey={cmdRunsVersion} />,
           },
           {
             key: 'log',

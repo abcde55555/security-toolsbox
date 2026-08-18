@@ -197,6 +197,88 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // Unified tool-execution history: orchestration step runs AND manual command
+  // runs, newest first, so the "工具执行记录" tab shows everything that ran.
+  app.get('/api/projects/:id/executions', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const services = getServices();
+      const { page, pageSize } = pagingFromQuery(req.query as Record<string, string>);
+      const stepExecs = services.repos.projects.listStepExecutionsForProject(id, {
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+      const manualRuns = services.repos.commandRuns.list({
+        workspaceId: 'default',
+        projectId: id,
+        page: 1,
+        pageSize,
+      }).items;
+      // Merge and sort by startedAt desc; keep it simple (two lists, both
+      // already time-ordered) rather than a cross-table SQL union.
+      const merged = [
+        ...stepExecs.items.map((s) => {
+          const snap = s.stepSnapshot as { title?: string; toolId?: string; toolVersion?: string };
+          const tool = snap.toolId ? services.repos.tools.getById(snap.toolId) : undefined;
+          return {
+            id: s.id,
+            source: 'orchestration' as const,
+            runId: s.runId,
+            stepId: s.stepId,
+            title: snap.title ?? s.stepId,
+            toolId: snap.toolId,
+            toolName: tool?.name ?? snap.toolId ?? '',
+            commandName: undefined as string | undefined,
+            status: s.status,
+            exitCode: s.exitCode,
+            durationMs: s.durationMs,
+            startedAt: s.startedAt ?? s.runStartedAt,
+            stdoutFileRef: s.stdoutFileRef,
+            stderrFileRef: s.stderrFileRef,
+            verdictCount: s.verdictCount,
+            evidenceCount: s.evidenceCount,
+            error: s.error,
+          };
+        }),
+        ...manualRuns.map((r) => ({
+          id: r.id,
+          source: 'manual' as const,
+          runId: r.id,
+          stepId: undefined,
+          title: r.commandName,
+          toolId: r.toolId,
+          toolName: r.toolName,
+          commandName: r.commandName,
+          status: r.status,
+          exitCode: r.exitCode,
+          durationMs: r.durationMs,
+          startedAt: r.startedAt,
+          stdoutFileRef: r.stdoutFileRef,
+          stderrFileRef: r.stderrFileRef,
+          verdictCount: 0,
+          evidenceCount: 0,
+          error: r.error ? { message: r.error } : undefined,
+          clauseId: r.clauseId,
+          resolvedCommand: r.resolvedCommand,
+        })),
+      ].sort((a, b) => {
+        const ta = a.startedAt ? Date.parse(a.startedAt) : 0;
+        const tb = b.startedAt ? Date.parse(b.startedAt) : 0;
+        return tb - ta;
+      });
+      const paged = merged.slice(0, pageSize);
+      const total = stepExecs.total + manualRuns.length;
+      ok(reply, paged, {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      });
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
   app.get('/api/projects/:id/logs', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
       const q = req.query as Record<string, string>;

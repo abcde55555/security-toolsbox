@@ -282,6 +282,44 @@ export class ProjectRepository {
     return rows.map((r) => this.mapStepRun(r));
   }
 
+  /**
+   * Step executions across all runs of a project, newest first. Joins
+   * project_runs (for run timestamp) so callers can render orchestration
+   * steps in a unified tool-execution history.
+   */
+  listStepExecutionsForProject(
+    projectId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): { items: Array<StepRun & { runStartedAt?: string; runId: string }>; total: number } {
+    const limit = opts.limit ?? 50;
+    const offset = opts.offset ?? 0;
+    const total = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) c FROM step_runs sr
+           JOIN project_runs pr ON pr.id = sr.projectRunId
+           WHERE pr.projectId = ?`,
+        )
+        .get(projectId) as { c: number }
+    ).c;
+    const rows = this.db
+      .prepare(
+        `SELECT sr.*, pr.startedAt AS runStartedAt, pr.id AS runId
+         FROM step_runs sr
+         JOIN project_runs pr ON pr.id = sr.projectRunId
+         WHERE pr.projectId = ?
+         ORDER BY COALESCE(sr.startedAt, sr.rowid) DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(projectId, limit, offset) as Record<string, unknown>[];
+    const items = rows.map((r) => ({
+      ...this.mapStepRun(r),
+      runId: String(r.runId),
+      runStartedAt: r.runStartedAt ? String(r.runStartedAt) : undefined,
+    }));
+    return { items, total };
+  }
+
   private mapStepRun(r: Record<string, unknown>): StepRun {
     return {
       id: String(r.id),
