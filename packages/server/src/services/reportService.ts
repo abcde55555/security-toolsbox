@@ -266,9 +266,12 @@ export class ReportService {
 
     const fileName = `EN18031-report-${project.name.replace(/[^a-z0-9一-龥]/gi, '_')}-${report.id.slice(0, 8)}.xlsx`;
     const filePath = path.join(config.reportsDir, fileName);
-    fs.mkdirSync(config.reportsDir, { recursive: true });
+    await fs.promises.mkdir(config.reportsDir, { recursive: true });
     await wb.xlsx.writeFile(filePath);
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+    const hash = crypto
+      .createHash('sha256')
+      .update(await fs.promises.readFile(filePath))
+      .digest('hex');
     this.ctx.repos.reports.save({
       projectId,
       projectRunId: report.projectRunId,

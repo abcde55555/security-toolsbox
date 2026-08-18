@@ -70,14 +70,22 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
       const { id, reportId } = req.params as { id: string; reportId: string };
       const services = getServices();
       const detail = services.reports.getReportDetail(id, reportId);
-      if (!detail.report.fileRef || !fs.existsSync(detail.report.fileRef)) {
+      let fileRef = detail.report.fileRef;
+      if (fileRef) {
+        try {
+          await fs.promises.access(fileRef);
+        } catch {
+          fileRef = undefined;
+        }
+      }
+      if (!fileRef) {
         const { filePath, fileName } = await services.reports.exportExcel(id, reportId);
         return reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`).type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(fs.createReadStream(filePath));
       }
       return reply
         .header('Content-Disposition', `attachment; filename="${encodeURIComponent(`report-${reportId}.xlsx`)}"`)
         .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        .send(fs.createReadStream(detail.report.fileRef));
+        .send(fs.createReadStream(fileRef));
     } catch (e) {
       handleError(reply, e);
     }

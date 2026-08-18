@@ -92,22 +92,6 @@ export const gradeText: Record<string, string> = {
   INCOMPLETE: '不完整',
 };
 
-export const categoryLabels: Array<{ key: string; label: string }> = [
-  { key: 'network-compliance', label: '网络合规' },
-  { key: 'crypto-compliance', label: '密码合规' },
-  { key: 'credential-compliance', label: '凭证合规' },
-  { key: 'firmware-analysis', label: '固件分析' },
-  { key: 'authentication', label: '认证安全' },
-  { key: 'reconnaissance', label: '侦察探测' },
-  { key: 'other', label: '其他' },
-];
-
-export const categoryOptions = categoryLabels.map((c) => ({ value: c.key, label: c.label }));
-
-export function categoryLabel(key?: string): string {
-  return categoryLabels.find((c) => c.key === key)?.label ?? key ?? '其他';
-}
-
 export const commandRunStatusColor: Record<string, string> = {
   pending: 'default',
   running: 'processing',
