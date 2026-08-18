@@ -198,4 +198,51 @@ export class TemplateService {
   notifyToolUpgrade(toolId: string): number {
     return this.ctx.repos.templates.markUpgradePending(toolId);
   }
+
+  /**
+   * Compute clause coverage for a template: which clauses are covered by its
+   * tools (via module-declared clauses or command mapping rules), and which
+   * clauses of the standard are left uncovered.
+   */
+  coverage(id: string, standardVersion?: string) {
+    const template = this.get(id);
+    const covered = new Map<string, { clauseId: string; toolId: string; toolName: string; via: 'module' | 'rule' }>();
+
+    for (const step of template.steps) {
+      const tool = this.ctx.repos.tools.getById(step.toolId);
+      if (!tool) continue;
+      // Module tools declare their clauses on the tool record.
+      for (const c of tool.clauses ?? []) {
+        if (!covered.has(c.clauseId)) {
+          covered.set(c.clauseId, { clauseId: c.clauseId, toolId: tool.id, toolName: tool.name, via: 'module' });
+        }
+      }
+      // Command tools cover clauses through mapping rules.
+      const rules = this.ctx.repos.clauses.listMappingRules(tool.id);
+      for (const r of rules) {
+        if (!covered.has(r.clauseId)) {
+          covered.set(r.clauseId, { clauseId: r.clauseId, toolId: tool.id, toolName: tool.name, via: 'rule' });
+        }
+      }
+    }
+
+    // Standard must be supplied by the caller (the UI knows which standard a
+    // project targets); fall back to the seeded EN18031 for convenience.
+    const std = standardVersion ?? 'EN18031:2019';
+    const allClauses = this.ctx.repos.clauses.list(std);
+    const coveredIds = new Set(covered.keys());
+    const uncovered = allClauses
+      .filter((c) => !coveredIds.has(c.clauseId))
+      .map((c) => ({ clauseId: c.clauseId, title: c.title, chapter: c.chapter, level: c.level }));
+
+    return {
+      templateId: id,
+      standardVersion: std,
+      total: allClauses.length,
+      coveredCount: coveredIds.size,
+      coverage: allClauses.length > 0 ? Math.round((coveredIds.size / allClauses.length) * 100) : 0,
+      covered: Array.from(covered.values()),
+      uncovered,
+    };
+  }
 }

@@ -90,4 +90,53 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
       handleError(reply, e);
     }
   });
+
+  // Machine-readable JSON export: full report with project, summary, and every
+  // clause + its verdict + evidence references.
+  app.get('/api/projects/:id/reports/:reportId/json', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id, reportId } = req.params as { id: string; reportId: string };
+      const detail = getServices().reports.getReportDetail(id, reportId);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        project: {
+          id: detail.project.id,
+          name: detail.project.name,
+          standardVersion: detail.project.standardVersion,
+          targetComplianceLevel: detail.project.targetComplianceLevel,
+        },
+        report: {
+          id: detail.report.id,
+          grade: detail.report.grade,
+          generatedAt: detail.report.generatedAt,
+          summary: detail.report.summary,
+        },
+        clauses: detail.clauses.map((c) => ({
+          clauseId: c.clauseId,
+          chapter: c.chapter,
+          title: c.title,
+          level: c.level,
+          parentId: c.parentId,
+          defaultSeverity: c.defaultSeverity,
+          verdict: c.verdict
+            ? {
+                pass: c.verdict.pass,
+                severity: c.verdict.severity,
+                reason: c.verdict.reason,
+                overridden: c.verdict.overridden,
+              }
+            : null,
+        })),
+      };
+      reply
+        .header('Content-Type', 'application/json; charset=utf-8')
+        .header(
+          'Content-Disposition',
+          `attachment; filename="report-${reportId}.json"`,
+        )
+        .send(JSON.stringify(payload, null, 2));
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
 }

@@ -1,6 +1,24 @@
 import type { ComplianceLevel, Project, ProjectRun, StepRun, TemplateVariable } from '@en18031/shared';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
+import { CommandExecutor } from '../engine/commandExecutor.js';
+
+export interface PreflightResult {
+  ready: boolean;
+  variables: { ok: boolean; missing: string[]; empty: string[] };
+  tools: Array<{
+    toolId: string;
+    name: string;
+    stepId: string;
+    available: boolean;
+    healthStatus: string;
+    message?: string;
+    skippable: boolean;
+  }>;
+  /** Steps that will be skipped because their tool is unavailable. */
+  skippedSteps: string[];
+  warnings: string[];
+}
 
 export class ProjectService {
   constructor(private ctx: ServiceContext) {}
@@ -131,5 +149,113 @@ export class ProjectService {
       }
     }
     return missing;
+  }
+
+  /**
+   * Pre-run checks: are required variables filled, and is every step's tool
+   * available? Tool unavailability is NON-fatal — those steps are marked
+   * skipped at run time rather than aborting the whole run.
+   */
+  async preflight(id: string): Promise<PreflightResult> {
+    const project = this.get(id);
+    const template = this.ctx.repos.templates.getById(project.templateId);
+    if (!template) throw Errors.validation('项目未绑定有效模板');
+
+    const values = project.variables as Record<string, unknown>;
+    const missing = this.validateVariables(template.variables, values);
+    const empty = template.variables
+      .filter((v) => !v.required)
+      .filter((v) => values[v.name] === undefined || values[v.name] === null || values[v.name] === '')
+      .map((v) => v.name);
+
+    const tools: PreflightResult['tools'] = [];
+    const skippedSteps: string[] = [];
+    const warnings: string[] = [];
+
+    for (const step of template.steps) {
+      const tool = this.ctx.repos.tools.getById(step.toolId);
+      if (!tool) {
+        tools.push({
+          toolId: step.toolId,
+          name: step.toolId,
+          stepId: step.stepId,
+          available: false,
+          healthStatus: 'red',
+          message: '工具不存在',
+          skippable: true,
+        });
+        skippedSteps.push(step.stepId);
+        continue;
+      }
+
+      // A module is available if it was loaded at startup. Command tools
+      // (interactionMode === 'cmd') have no module and are available unless
+      // their binary/healthCheck fails below.
+      let available = tool.interactionMode === 'form' ? this.ctx.moduleLoader.has(tool.id) : true;
+      let healthStatus = available ? (tool.healthStatus ?? 'unknown') : 'red';
+      let message: string | undefined;
+      if (!available && tool.interactionMode === 'form') {
+        message = '模组未加载（可能缺少依赖或启动失败）';
+      }
+
+      // For command tools / tools with a healthCheck command, verify the
+      // executable is reachable.
+      if (available && tool.healthCheck?.command) {
+        try {
+          const executor = new CommandExecutor();
+          const r = await executor.runCommand(tool.healthCheck.command, {
+            timeoutMs: tool.healthCheck.timeoutMs ?? 5000,
+          });
+          if (r.exitCode === 0) {
+            available = true;
+            healthStatus = 'green';
+          } else {
+            available = false;
+            healthStatus = 'red';
+            message = (r.stderr || r.stdout || '健康检查失败').slice(0, 200);
+          }
+        } catch (e) {
+          available = false;
+          healthStatus = 'red';
+          message = (e as Error).message;
+        }
+      } else if (tool.interactionMode === 'cmd' && tool.path) {
+        // Command tool with a path but no health check: verify the binary exists.
+        try {
+          const executor = new CommandExecutor();
+          const r = await executor.runCommand(`command -v ${tool.path}`, { timeoutMs: 5000 });
+          if (r.exitCode !== 0) {
+            available = false;
+            healthStatus = 'red';
+            message = `找不到可执行文件: ${tool.path}`;
+          }
+        } catch {
+          // command -v not available (Windows); treat as available.
+        }
+      }
+
+      if (!available) {
+        skippedSteps.push(step.stepId);
+        warnings.push(`步骤「${step.title}」的工具「${tool.name}」不可用，运行时将跳过`);
+      }
+
+      tools.push({
+        toolId: tool.id,
+        name: tool.name,
+        stepId: step.stepId,
+        available,
+        healthStatus,
+        message,
+        skippable: true,
+      });
+    }
+
+    return {
+      ready: missing.length === 0,
+      variables: { ok: missing.length === 0, missing, empty },
+      tools,
+      skippedSteps,
+      warnings,
+    };
   }
 }

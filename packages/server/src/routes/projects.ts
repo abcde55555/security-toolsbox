@@ -188,6 +188,15 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get('/api/projects/:id/preflight', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      ok(reply, await getServices().projects.preflight(id));
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
   app.get('/api/projects/:id/logs', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
       const q = req.query as Record<string, string>;

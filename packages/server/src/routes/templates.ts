@@ -62,6 +62,16 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get('/api/templates/:id/coverage', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const q = req.query as { standardVersion?: string };
+      ok(reply, getServices().templates.coverage(id, q.standardVersion));
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
   app.post('/api/templates/:id/confirm-upgrade', { preHandler: requireRole('template_manager') }, async (req, reply) => {
     try {
       const { id } = req.params as { id: string };

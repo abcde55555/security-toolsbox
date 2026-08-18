@@ -609,6 +609,32 @@ export class OrchestratorService {
     const params = subbed.value as Record<string, unknown>;
 
     const tool = this.ctx.repos.tools.getById(step.toolId)!;
+
+    // Skip steps whose tool/module is unavailable (e.g. nmap not installed).
+    // This keeps the rest of the run working instead of failing everything.
+    if (tool.interactionMode === 'form' && !this.ctx.moduleLoader.has(tool.id)) {
+      const skipResult: ExecutionResult = {
+        runId: stepRunId,
+        projectId,
+        stepId: step.stepId,
+        toolId: step.toolId,
+        status: 'cancelled',
+        exitCode: 0,
+        stdout: '',
+        stderr: `工具「${tool.name}」未加载，已跳过`,
+        durationMs: 0,
+        startedAt: nowIso(),
+        finishedAt: nowIso(),
+        evidence: [{ type: 'validation_error', content: `工具未加载，步骤跳过: ${tool.name}`, severity: 'middle' }],
+        verdicts: [],
+      };
+      this.ctx.repos.projects.updateStepRun(stepRunId, {
+        status: 'cancelled',
+        finishedAt: nowIso(),
+        percent: 100,
+      });
+      return skipResult;
+    }
     const onProgress = (p: { percent?: number; message?: string; logLine?: string }): void => {
       if (p.logLine) {
         this.ctx.bus.emit('run:logLine', { projectId, runId, stepRunId, stepId: step.stepId, line: p.logLine });

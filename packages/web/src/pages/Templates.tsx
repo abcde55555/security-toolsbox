@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, CopyOutlined, DeleteOutlined, PlayCircleOutlined,
-  EditOutlined, ArrowUpOutlined, ArrowDownOutlined,
+  EditOutlined, ArrowUpOutlined, ArrowDownOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { Template, Tool, TemplateStep, FormField } from '@en18031/shared';
@@ -14,6 +14,7 @@ import { reportError } from '../api/client';
 import { failureStrategyText, versionLockText } from '../utils/ui';
 import { useCategories } from '../hooks/useCategories';
 import StepParamBinder, { isBoundValue } from '../components/StepParamBinder';
+import TemplateCoverage from '../components/TemplateCoverage';
 import type { TemplateVariable } from '@en18031/shared';
 
 const { Sider, Content } = Layout;
@@ -66,6 +67,7 @@ export default function Templates() {
   const [form] = Form.useForm();
   const [stepForms, setStepForms] = useState<StepForm[]>([]);
   const [varForms, setVarForms] = useState<TemplateVariable[]>([]);
+  const [coverageId, setCoverageId] = useState<string>();
   const stepSeq = useRef(1);
 
   const selected = templates.find((t) => t.id === selectedId);
@@ -325,6 +327,7 @@ export default function Templates() {
               title={<><Typography.Text strong>{selected.name}</Typography.Text> <Tag style={{ marginLeft: 8 }}>rev {selected.revision}</Tag></>}
               extra={
                 <Space>
+                  <Button icon={<SafetyCertificateOutlined />} onClick={() => setCoverageId(selected.id)}>覆盖度</Button>
                   <Button icon={<EditOutlined />} onClick={() => openEdit(selected)}>编辑</Button>
                   <Button icon={<CopyOutlined />} onClick={() => void clone(selected)}>克隆</Button>
                   <Popconfirm title="确认删除该模板？" onConfirm={() => void remove(selected)}>
@@ -500,6 +503,12 @@ export default function Templates() {
           <Button block icon={<PlusOutlined />} onClick={addStep}>添加步骤</Button>
         </div>
       </Modal>
+
+      <TemplateCoverage
+        open={!!coverageId}
+        templateId={coverageId ?? ''}
+        onClose={() => setCoverageId(undefined)}
+      />
     </Layout>
   );
 }

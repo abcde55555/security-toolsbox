@@ -73,7 +73,30 @@ export const TemplatesApi = {
     api.post<Template>(`/templates/${id}/clone`, { newName, inheritParent }),
   confirmUpgrade: (id: string, toolId: string, lock: boolean) =>
     api.post<Template>(`/templates/${id}/confirm-upgrade`, { toolId, lock }),
+  coverage: (id: string, standardVersion?: string) =>
+    api.get<TemplateCoverage>(
+      `/templates/${id}/coverage${standardVersion ? `?standardVersion=${encodeURIComponent(standardVersion)}` : ''}`,
+    ),
 };
+
+export interface TemplateCoverageItem {
+  clauseId: string;
+  toolId: string;
+  toolName: string;
+  via: 'module' | 'rule';
+  title?: string;
+  chapter?: string;
+  level?: string;
+}
+export interface TemplateCoverage {
+  templateId: string;
+  standardVersion: string;
+  total: number;
+  coveredCount: number;
+  coverage: number;
+  covered: TemplateCoverageItem[];
+  uncovered: Array<{ clauseId: string; title: string; chapter: string; level: string }>;
+}
 
 export const ProjectsApi = {
   list: () => api.get<Project[]>('/projects'),
@@ -107,7 +130,26 @@ export const ProjectsApi = {
       `/projects/${projectId}/tools/${toolId}/execute-module`,
       body,
     ),
+  preflight: (id: string) =>
+    api.get<PreflightResult>(`/projects/${id}/preflight`),
 };
+
+export interface PreflightTool {
+  toolId: string;
+  name: string;
+  stepId: string;
+  available: boolean;
+  healthStatus: string;
+  message?: string;
+  skippable: boolean;
+}
+export interface PreflightResult {
+  ready: boolean;
+  variables: { ok: boolean; missing: string[]; empty: string[] };
+  tools: PreflightTool[];
+  skippedSteps: string[];
+  warnings: string[];
+}
 
 export const ClausesApi = {
   list: (standardVersion = 'EN18031:2019', level?: string, chapter?: string) => {
@@ -230,4 +272,6 @@ export const ReportsApi = {
   },
   downloadUrl: (projectId: string, reportId: string) =>
     `/api/projects/${projectId}/reports/${reportId}/download`,
+  jsonUrl: (projectId: string, reportId: string) =>
+    `/api/projects/${projectId}/reports/${reportId}/json`,
 };

@@ -28,6 +28,7 @@ import CommandRunsTab from '../components/project/CommandRunsTab';
 import AuditTab from '../components/project/AuditTab';
 import ReportTab from '../components/project/ReportTab';
 import StepDetailDrawer from '../components/project/StepDetailDrawer';
+import PreflightModal from '../components/PreflightModal';
 import type { StepRunDetail, ReportDetail } from '../api/endpoints';
 
 const { Content } = Layout;
@@ -55,6 +56,7 @@ export default function ProjectDetail() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [singleRun, setSingleRun] = useState<{ tool: Tool; command: ToolCommand } | null>(null);
   const [cmdRunsVersion, setCmdRunsVersion] = useState(0);
+  const [preflightOpen, setPreflightOpen] = useState(false);
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const loadSeq = useRef(0);
 
@@ -361,7 +363,7 @@ export default function ProjectDetail() {
             <Button danger icon={<StopOutlined />} onClick={() => void cancelRun()}>取消运行</Button>
           ) : (
             <Tooltip title={moduleStepCount === 0 ? '该模板没有可编排执行的模组步骤，请在模板中添加模组，或用「单独执行工具」直接运行命令' : undefined}>
-              <Button type="primary" icon={<PlayCircleOutlined />} loading={busy} disabled={!canStartOrchestration} onClick={() => void startRun()}>
+              <Button type="primary" icon={<PlayCircleOutlined />} loading={busy} disabled={!canStartOrchestration} onClick={() => setPreflightOpen(true)}>
                 开始测试
               </Button>
             </Tooltip>
@@ -480,6 +482,13 @@ export default function ProjectDetail() {
           onChanged={() => setCmdRunsVersion((v) => v + 1)}
         />
       )}
+
+      <PreflightModal
+        open={preflightOpen}
+        projectId={id}
+        onClose={() => setPreflightOpen(false)}
+        onConfirm={() => { setPreflightOpen(false); void startRun(); }}
+      />
     </Content>
   );
 }

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import {
   Spin, Empty, Card, Row, Col, Typography, Tag, Space, Button, Table,
 } from 'antd';
-import { FileExcelOutlined, FileTextOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { FileExcelOutlined, FileTextOutlined, FilePdfOutlined, CodeOutlined } from '@ant-design/icons';
 import type { Report, ClauseNode } from '@en18031/shared';
 import type { ReportDetail } from '../../api/endpoints';
 import { ReportsApi } from '../../api/endpoints';
@@ -111,6 +111,12 @@ export default function ReportTab({
               <Button type="primary" icon={<FileTextOutlined />} onClick={onRegenerate}>重新生成</Button>
               <Button icon={<FileExcelOutlined />} onClick={onExport}>导出 Excel</Button>
               <Button icon={<FilePdfOutlined />} onClick={exportHtml}>导出 PDF</Button>
+              <Button
+                icon={<CodeOutlined />}
+                onClick={() => window.open(ReportsApi.jsonUrl(projectId, report.id), '_blank')}
+              >
+                导出 JSON
+              </Button>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 生成于 {new Date(report.generatedAt).toLocaleString('zh-CN')}
               </Typography.Text>

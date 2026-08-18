@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Layout, Card, Button, Tag, Space, Typography, Empty, Spin, Table, Modal, Form, Input,
-  Select, message, Popconfirm,
+  Select, message, Popconfirm, Tabs,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, CodeOutlined,
@@ -445,7 +445,27 @@ function MappingRulesModal({ open, onClose, changed }: { open: boolean; onClose:
   const [tools, setTools] = useState<Tool[]>([]);
   const [clauses, setClauses] = useState<Clause[]>([]);
   const [loading, setLoading] = useState(false);
+  const [testOutput, setTestOutput] = useState('');
   const [form] = Form.useForm();
+
+  // Live-match the pasted output against all current rules.
+  const testMatches = useMemo(() => {
+    if (!testOutput.trim()) return [];
+    return rules
+      .map((r) => {
+        let matched = false;
+        try {
+          matched = r.matcherType === 'regex'
+            ? new RegExp(r.pattern, 'm').test(testOutput)
+            : testOutput.includes(r.pattern);
+        } catch {
+          matched = false;
+        }
+        return { rule: r, matched };
+      })
+      .filter((x) => x.matched)
+      .sort((a, b) => (b.rule.priority ?? 0) - (a.rule.priority ?? 0));
+  }, [rules, testOutput]);
 
   const load = async () => {
     setLoading(true);
@@ -481,13 +501,8 @@ function MappingRulesModal({ open, onClose, changed }: { open: boolean; onClose:
     await load();
   };
 
-  return (
-    <Modal title="判定规则（命令输出 → 条款判定）" open={open} onCancel={onClose} footer={null} width={860}>
-      <Typography.Paragraph type="secondary">
-        命令手册型工具用规则匹配 stdout/stderr：命中「判通过」判 PASS、命中「判失败」判 FAIL，或仅作为证据。
-        模组型工具在代码 <code className="mono">execute()</code> 中直接返回 verdicts。
-      </Typography.Paragraph>
-
+  const rulesTab = (
+    <>
       <Form form={form} layout="inline" style={{ marginBottom: 16, rowGap: 8 }}>
         <Form.Item name="toolId" rules={[{ required: true, message: '选择工具' }]}>
           <Select placeholder="工具" style={{ width: 180 }} showSearch optionFilterProp="label"
@@ -530,6 +545,63 @@ function MappingRulesModal({ open, onClose, changed }: { open: boolean; onClose:
           />
         )}
       </Spin>
+    </>
+  );
+
+  const testerTab = (
+    <div>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        粘贴一段真实的命令输出（stdout/stderr），下方会实时显示哪些规则命中、将判定为什么结果。
+      </Typography.Paragraph>
+      <Input.TextArea
+        rows={6}
+        className="mono"
+        placeholder={'例如：\n22/tcp open  ssh OpenSSH 9.0\n80/tcp open  http\n23/tcp open  telnet'}
+        value={testOutput}
+        onChange={(e) => setTestOutput(e.target.value)}
+      />
+      <div style={{ marginTop: 12 }}>
+        {!testOutput.trim() ? (
+          <Empty description="粘贴输出后查看命中结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : testMatches.length === 0 ? (
+          <Tag color="red">没有任何规则命中此输出</Tag>
+        ) : (
+          <Table
+            rowKey={(r) => r.rule.id}
+            size="small"
+            pagination={false}
+            dataSource={testMatches}
+            columns={[
+              { title: '条款', dataIndex: ['rule', 'clauseId'], render: (v: string) => <code className="mono">{v}</code> },
+              { title: '工具', dataIndex: ['rule', 'toolId'], render: (v: string) => tools.find((t) => t.id === v)?.name ?? v },
+              { title: '命中模式', key: 'pat', render: (_, r) => <code className="mono">{r.rule.pattern}</code> },
+              {
+                title: '判定结果', dataIndex: ['rule', 'onMatch'],
+                render: (v: string) => (
+                  <Tag color={v === 'verdict-pass' ? 'green' : v === 'verdict-fail' ? 'red' : 'default'}>
+                    {v === 'verdict-pass' ? 'PASS' : v === 'verdict-fail' ? 'FAIL' : '仅证据'}
+                  </Tag>
+                ),
+              },
+            ]}
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <Modal title="判定规则（命令输出 → 条款判定）" open={open} onCancel={onClose} footer={null} width={860}>
+      <Typography.Paragraph type="secondary">
+        命令手册型工具用规则匹配 stdout/stderr：命中「判通过」判 PASS、命中「判失败」判 FAIL，或仅作为证据。
+        模组型工具在代码 <code className="mono">execute()</code> 中直接返回 verdicts。
+      </Typography.Paragraph>
+      <Tabs
+        items={[
+          { key: 'rules', label: '规则管理', children: rulesTab },
+          { key: 'test', label: '规则测试器', children: testerTab },
+        ]}
+      />
     </Modal>
   );
 }
