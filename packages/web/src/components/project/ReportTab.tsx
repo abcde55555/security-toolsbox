@@ -28,12 +28,13 @@ interface ReportTabProps {
   summary?: Report['summary'];
   projectId: string;
   standardName?: string;
+  hasRuns: boolean;
   onRegenerate: () => void;
   onExport: () => void;
 }
 
 export default function ReportTab({
-  loading, report, detail, summary, projectId, standardName, onRegenerate, onExport,
+  loading, report, detail, summary, projectId, standardName, hasRuns, onRegenerate, onExport,
 }: ReportTabProps) {
   const clauses = (detail?.clauses ?? []) as ReportClauseRow[];
 
@@ -79,8 +80,18 @@ export default function ReportTab({
   if (loading) return <Spin tip="加载报告…" />;
   if (!report || !summary) {
     return (
-      <Empty description="尚未生成合规报告">
-        <Button type="primary" onClick={onRegenerate}>生成报告</Button>
+      <Empty
+        description={
+          hasRuns ? '尚未生成报告，可手动重新生成' : '运行测试后会自动生成报告'
+        }
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, maxWidth: 420, margin: '0 auto 16px' }}>
+          报告汇总的是测试运行产生的条款判定结果。到「执行流程」标签页点击「开始测试」，
+          运行结束后报告会自动生成。
+        </Typography.Paragraph>
+        {hasRuns && (
+          <Button type="primary" onClick={onRegenerate}>重新生成报告</Button>
+        )}
       </Empty>
     );
   }

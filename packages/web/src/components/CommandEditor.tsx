@@ -5,9 +5,12 @@ import {
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, WarningFilled, SafetyCertificateOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import type { ToolCommand, FormField, Clause } from '@en18031/shared';
 import { extractPlaceholders, renderCommandTemplate, uuid } from '@en18031/shared';
+import { ToolsApi } from '../api/endpoints';
+import { reportError } from '../api/client';
 
 const { TextArea } = Input;
 
@@ -88,11 +91,12 @@ function commandToRows(cmd: ToolCommand): ParamRow[] {
 }
 
 export default function CommandEditor({
-  open, command, clauses, onSave, onCancel,
+  open, command, clauses, toolId, onSave, onCancel,
 }: {
   open: boolean;
   command: ToolCommand | null;
   clauses: Clause[];
+  toolId?: string;
   onSave: (cmd: ToolCommand) => void;
   onCancel: () => void;
 }) {
@@ -100,6 +104,10 @@ export default function CommandEditor({
   const [rows, setRows] = useState<ParamRow[]>([]);
   // 记录用户显式删除/关闭的参数 id，即使占位符仍存在也不自动重新添加
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<Awaited<ReturnType<typeof ToolsApi.testCommand>> | null>(null);
+  // Sample values for {{placeholders}} when running a test, keyed by param id.
+  const [testValues, setTestValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (open) {
@@ -107,8 +115,32 @@ export default function CommandEditor({
       setDraft(d);
       setRows(commandToRows(d));
       setDismissed(new Set());
+      setTestResult(null);
+      setTestValues({});
     }
   }, [open, command]);
+
+  const runTest = async () => {
+    if (!draft.commandTemplate.trim()) {
+      message.warning('请先填写命令模板');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await ToolsApi.testCommand({
+        commandTemplate: draft.commandTemplate,
+        params: testValues,
+        timeoutMs: draft.timeoutMs,
+        toolId,
+      });
+      setTestResult(result);
+    } catch (e) {
+      reportError(e);
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const placeholders = useMemo(
     () => extractPlaceholders(draft.commandTemplate),
@@ -476,6 +508,71 @@ export default function CommandEditor({
         )}
         {unusedParams.length > 0 && (
           <Tag color="orange" style={{ marginTop: 6 }}>未使用参数: {unusedParams.join(', ')}</Tag>
+        )}
+
+        <Divider style={{ margin: '12px 0 8px' }}>命令测试</Divider>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+          填入测试值后直接在服务器上执行这条命令，验证是否可用、输出是否符合预期。不会保存任何结果。
+        </Typography.Paragraph>
+        {params.length > 0 && (
+          <Row gutter={[8, 8]} style={{ marginBottom: 8 }}>
+            {params.map((p) => (
+              <Col span={12} key={p.id}>
+                <Input
+                  size="small"
+                  addonBefore={p.id}
+                  placeholder={`测试值${p.value !== undefined && p.value !== '' ? ` (默认: ${String(p.value)})` : ''}`}
+                  value={testValues[p.id] ?? ''}
+                  onChange={(e) => setTestValues((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                />
+              </Col>
+            ))}
+          </Row>
+        )}
+        <Button
+          type="default"
+          icon={<PlayCircleOutlined />}
+          loading={testing}
+          onClick={runTest}
+          style={{ marginBottom: 8 }}
+        >
+          执行测试
+        </Button>
+        {testResult && (
+          <div>
+            <Space style={{ marginBottom: 6 }} wrap>
+              <Tag color={testResult.exitCode === 0 ? 'green' : 'red'}>
+                退出码: {testResult.exitCode ?? '-'}
+              </Tag>
+              <Tag>{testResult.status}</Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {testResult.durationMs}ms
+              </Typography.Text>
+              {testResult.matchedRules.length > 0 ? (
+                <Tag color="blue">命中 {testResult.matchedRules.length} 条判定规则</Tag>
+              ) : (
+                <Tag>无规则命中</Tag>
+              )}
+            </Space>
+            <div className="mono" style={{
+              padding: '8px 10px', background: '#0b1020', color: '#d6e2f5',
+              borderRadius: 6, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              maxHeight: 200, overflow: 'auto',
+            }}>
+              <div style={{ color: '#64748b' }}>$ {testResult.command}</div>
+              {testResult.stdout && <div style={{ marginTop: 4 }}>{testResult.stdout}</div>}
+              {testResult.stderr && <div style={{ color: '#fca5a5', marginTop: 4 }}>{testResult.stderr}</div>}
+            </div>
+            {testResult.matchedRules.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                {testResult.matchedRules.map((r) => (
+                  <Tag key={r.clauseId + r.pattern} color={r.onMatch === 'verdict-pass' ? 'green' : r.onMatch === 'verdict-fail' ? 'red' : 'default'}>
+                    {r.clauseId}: {r.pattern} → {r.onMatch === 'verdict-pass' ? 'PASS' : r.onMatch === 'verdict-fail' ? 'FAIL' : '证据'}
+                  </Tag>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {blockers.length > 0 && (

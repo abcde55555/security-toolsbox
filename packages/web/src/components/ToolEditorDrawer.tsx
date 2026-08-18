@@ -399,6 +399,7 @@ export default function ToolEditorDrawer({
         open={commandEditorOpen}
         command={editingCommand}
         clauses={clauses}
+        toolId={tool?.id}
         onSave={saveCommand}
         onCancel={() => { setCommandEditorOpen(false); setEditingCommand(null); }}
       />

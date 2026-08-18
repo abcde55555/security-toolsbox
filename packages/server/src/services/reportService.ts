@@ -29,6 +29,12 @@ export class ReportService {
       ? this.ctx.repos.results.listVerdictsByRun(runId)
       : this.ctx.repos.results.listVerdictsByProject(projectId);
 
+    // A report needs actual results. If nothing has run, refuse to generate
+    // an "all not covered" report that looks meaningful but isn't.
+    if (verdicts.length === 0) {
+      throw Errors.validation('该项目还没有任何测试结果，请先运行测试再生成报告');
+    }
+
     const latestByClause = new Map<string, ClauseVerdict>();
     for (const v of verdicts) {
       const existing = latestByClause.get(v.clauseId);

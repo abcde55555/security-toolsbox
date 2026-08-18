@@ -475,7 +475,18 @@ export default function Templates() {
                     options={tools.map((t) => ({
                       value: t.id,
                       label: `${t.name} (${labelOf(t.category)})${t.formFields.length === 0 ? ' · 无表单参数' : ''}`,
+                      desc: t.description,
                     }))}
+                    optionRender={(option) => (
+                      <Space direction="vertical" size={0}>
+                        <span>{option.data.label}</span>
+                        {option.data.desc && (
+                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                            {option.data.desc}
+                          </Typography.Text>
+                        )}
+                      </Space>
+                    )}
                   />
                   {hasForm ? (
                     <StepParamBinder

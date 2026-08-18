@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { Card, Row, Col, Empty, Tag, Typography, Timeline, Button, Space, Progress, Statistic } from 'antd';
+import { Card, Row, Col, Empty, Tag, Typography, Timeline, Button, Space, Progress, Statistic, Tooltip } from 'antd';
 import { RedoOutlined } from '@ant-design/icons';
-import type { Template, ProjectRun, StepRun } from '@en18031/shared';
+import type { Template, ProjectRun, StepRun, Tool } from '@en18031/shared';
 import {
   runStatusColor, runStatusText, stepStatusColor, stepStatusText, formatEta,
 } from '../../utils/ui';
@@ -9,6 +9,7 @@ import {
 interface FlowTabProps {
   template?: Template;
   steps: StepRun[];
+  tools: Tool[];
   running: boolean;
   activeRunId?: string;
   runs: ProjectRun[];
@@ -28,7 +29,7 @@ function handleKeyboard(e: React.KeyboardEvent, fn: () => void) {
 
 export default function FlowTab(props: FlowTabProps) {
   const {
-    template, steps, running, onOpenStep, onRetry, runs, activeRunId, onSelectRun,
+    template, steps, tools, running, onOpenStep, onRetry, runs, activeRunId, onSelectRun,
     overallProgress, eta,
   } = props;
 
@@ -37,6 +38,8 @@ export default function FlowTab(props: FlowTabProps) {
     for (const s of steps) m.set(s.stepId, s);
     return m;
   }, [steps]);
+
+  const toolById = useMemo(() => new Map(tools.map((t) => [t.id, t])), [tools]);
 
   // 聚合统计
   const stats = useMemo(() => {
@@ -129,6 +132,7 @@ export default function FlowTab(props: FlowTabProps) {
             ) : template.steps.map((snap) => {
               const sr = byStepId.get(snap.stepId);
               const status = sr?.status ?? 'pending';
+              const tool = toolById.get(snap.toolId);
               return (
                 <div
                   key={snap.stepId}
@@ -145,7 +149,23 @@ export default function FlowTab(props: FlowTabProps) {
                       <Tag color={stepStatusColor[status]}>{stepStatusText[status] ?? status}</Tag>
                       <Typography.Text strong>{snap.title}</Typography.Text>
                       <Tag>{snap.stepId}</Tag>
-                      <Tag color="blue">{snap.toolId}</Tag>
+                      <Tooltip
+                        title={
+                          tool ? (
+                            <div>
+                              <div><strong>{tool.name}</strong></div>
+                              {tool.description && <div style={{ marginTop: 4 }}>{tool.description}</div>}
+                              <div style={{ marginTop: 4, color: '#94a3b8', fontSize: 11 }}>{tool.id} · v{tool.version}</div>
+                            </div>
+                          ) : (
+                            <span>工具 {snap.toolId} 未找到</span>
+                          )
+                        }
+                      >
+                        <Tag color="blue" style={{ cursor: 'help' }}>
+                          {tool?.name ?? snap.toolId}
+                        </Tag>
+                      </Tooltip>
                       {snap.onFailure === 'abort' && <Tag color="red">失败中止</Tag>}
                     </Space>
                     <Space>

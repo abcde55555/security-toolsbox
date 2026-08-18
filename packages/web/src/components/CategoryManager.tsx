@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Modal, List, Button, Input, Space, Tag, Popconfirm, Typography, Form, message } from 'antd';
-import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Modal, List, Button, Input, Space, Tag, Popconfirm, Typography, Form, message, Tooltip } from 'antd';
+import { EditOutlined, DeleteOutlined, PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { CategoriesApi, type ToolCategoryInfo } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { useCategories } from '../hooks/useCategories';
@@ -43,6 +43,14 @@ export default function CategoryManager({ open, onClose, onChanged }: Props) {
     } catch (e) { reportError(e); }
   };
 
+  const move = async (key: string, dir: -1 | 1) => {
+    try {
+      await CategoriesApi.reorder(key, dir);
+      await refresh();
+      onChanged();
+    } catch (e) { reportError(e); }
+  };
+
   const remove = async (c: ToolCategoryInfo) => {
     try {
       const res = await CategoriesApi.remove(c.key);
@@ -74,10 +82,18 @@ export default function CategoryManager({ open, onClose, onChanged }: Props) {
         size="small"
         bordered
         dataSource={categories}
-        renderItem={(c) => (
+        renderItem={(c, idx) => (
           <List.Item
-            actions={
-              c.builtin
+            actions={[
+              <Tooltip key="up" title="上移">
+                <Button size="small" type="text" icon={<ArrowUpOutlined />}
+                  disabled={idx === 0} onClick={() => move(c.key, -1)} />
+              </Tooltip>,
+              <Tooltip key="down" title="下移">
+                <Button size="small" type="text" icon={<ArrowDownOutlined />}
+                  disabled={idx === categories.length - 1} onClick={() => move(c.key, 1)} />
+              </Tooltip>,
+              ...(c.builtin
                 ? [<Tag key="b" color="default">内置</Tag>]
                 : [
                     <Button key="e" size="small" type="text" icon={<EditOutlined />}
@@ -85,8 +101,8 @@ export default function CategoryManager({ open, onClose, onChanged }: Props) {
                     <Popconfirm key="d" title={`删除分类「${c.label}」?`} onConfirm={() => remove(c)}>
                       <Button size="small" type="text" danger icon={<DeleteOutlined />} />
                     </Popconfirm>,
-                  ]
-            }
+                  ]),
+            ]}
           >
             {editing === c.key ? (
               <Space>

@@ -414,6 +414,7 @@ export default function ProjectDetail() {
               <FlowTab
                 template={template}
                 steps={steps}
+                tools={tools}
                 running={running}
                 onOpenStep={openStep}
                 onRetry={(sid) => void retryStep(sid)}
@@ -456,6 +457,7 @@ export default function ProjectDetail() {
                 summary={summary}
                 projectId={id}
                 standardName={project?.standardVersion}
+                hasRuns={runs.length > 0}
                 onRegenerate={() => void regenerateReport()}
                 onExport={() => void exportExcel()}
               />

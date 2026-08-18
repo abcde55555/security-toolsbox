@@ -46,6 +46,8 @@ export const CategoriesApi = {
   update: (key: string, label: string) => api.put<ToolCategoryInfo>(`/tool-categories/${key}`, { label }),
   remove: (key: string) =>
     api.del<{ deleted: boolean; reassigned: number }>(`/tool-categories/${encodeURIComponent(key)}`),
+  reorder: (key: string, dir: -1 | 1) =>
+    api.post<ToolCategoryInfo[]>(`/tool-categories/${encodeURIComponent(key)}/reorder`, { dir }),
 };
 
 export const ToolsApi = {
@@ -61,6 +63,21 @@ export const ToolsApi = {
   remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/tools/${id}`),
   healthCheck: (id: string) => api.post<{ id: string; healthStatus: string }>(`/tools/${id}/health-check`),
   references: (id: string) => api.get<unknown[]>(`/tools/${id}/references`),
+  testCommand: (body: {
+    commandTemplate: string;
+    params?: Record<string, unknown>;
+    timeoutMs?: number;
+    toolId?: string;
+  }) =>
+    api.post<{
+      command: string;
+      exitCode: number | null;
+      status: string;
+      stdout: string;
+      stderr: string;
+      durationMs: number;
+      matchedRules: Array<{ clauseId: string; pattern: string; matcherType: string; onMatch: string }>;
+    }>('/test-command', body),
 };
 
 export const TemplatesApi = {

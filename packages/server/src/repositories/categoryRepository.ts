@@ -87,6 +87,21 @@ export class CategoryRepository {
     return this.get(key);
   }
 
+  /** Move a category before (dir=-1) or after (dir=+1) its neighbor. */
+  reorder(key: string, dir: -1 | 1): ToolCategory[] {
+    const all = this.list();
+    const idx = all.findIndex((c) => c.key === key);
+    if (idx < 0) return all;
+    const swapWith = idx + dir;
+    if (swapWith < 0 || swapWith >= all.length) return all;
+    const a = all[idx];
+    const b = all[swapWith];
+    const tmp = a.sortOrder;
+    this.db.prepare('UPDATE tool_categories SET sortOrder = ? WHERE key = ?').run(b.sortOrder, a.key);
+    this.db.prepare('UPDATE tool_categories SET sortOrder = ? WHERE key = ?').run(tmp, b.key);
+    return this.list();
+  }
+
   /**
    * Delete a category. Tools using it are re-categorised to 'other' so nothing
    * is orphaned. Built-in categories cannot be deleted.
