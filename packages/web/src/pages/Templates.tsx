@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout, List, Card, Button, Tag, Space, Typography, Empty, Spin, Modal, Form, Input,
-  Select, message, Steps as AntSteps, Popconfirm, Alert, Tooltip,
+  Select, message, Steps as AntSteps, Popconfirm, Alert, Tooltip, Dropdown,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, CopyOutlined, DeleteOutlined, PlayCircleOutlined,
@@ -15,6 +15,7 @@ import { failureStrategyText, versionLockText } from '../utils/ui';
 import { useCategories } from '../hooks/useCategories';
 import StepParamBinder, { isBoundValue } from '../components/StepParamBinder';
 import TemplateCoverage from '../components/TemplateCoverage';
+import ComplianceTemplateEditor, { type ComplianceSavePayload } from '../components/ComplianceTemplateEditor';
 import type { TemplateVariable } from '@en18031/shared';
 
 const { Sider, Content } = Layout;
@@ -68,6 +69,8 @@ export default function Templates() {
   const [stepForms, setStepForms] = useState<StepForm[]>([]);
   const [varForms, setVarForms] = useState<TemplateVariable[]>([]);
   const [coverageId, setCoverageId] = useState<string>();
+  const [complianceOpen, setComplianceOpen] = useState(false);
+  const [complianceEditing, setComplianceEditing] = useState<Template | null>(null);
   const stepSeq = useRef(1);
 
   const selected = templates.find((t) => t.id === selectedId);
@@ -253,6 +256,28 @@ export default function Templates() {
     }
   };
 
+  const saveCompliance = async (payload: ComplianceSavePayload) => {
+    try {
+      let tpl: Template;
+      if (complianceEditing) {
+        tpl = await TemplatesApi.update(complianceEditing.id, {
+          ...payload,
+          revision: complianceEditing.revision,
+        });
+        message.success('合规模板已更新');
+      } else {
+        tpl = await TemplatesApi.create(payload);
+        message.success('合规模板已创建');
+      }
+      setComplianceOpen(false);
+      setComplianceEditing(null);
+      await load();
+      setSelectedId(tpl.id);
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
   const clone = async (t: Template) => {
     try {
       const c = await TemplatesApi.clone(t.id, `${t.name} (副本)`);
@@ -288,7 +313,24 @@ export default function Templates() {
           <Typography.Text strong>测试模板</Typography.Text>
           <Space>
             <Button size="small" icon={<ReloadOutlined />} onClick={() => void load()} />
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建</Button>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'adhoc', label: '自由编排模板' },
+                  { key: 'compliance', label: '合规测试模板（条款驱动）' },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'compliance') {
+                    setComplianceEditing(null);
+                    setComplianceOpen(true);
+                  } else {
+                    openCreate();
+                  }
+                },
+              }}
+            >
+              <Button size="small" type="primary" icon={<PlusOutlined />}>新建</Button>
+            </Dropdown>
           </Space>
         </Space>
         {loading ? <Spin /> : templates.length === 0 ? <Empty description="暂无模板" /> : (
@@ -304,12 +346,17 @@ export default function Templates() {
                 }}
               >
                 <List.Item.Meta
-                  title={<Typography.Text strong>{t.name}</Typography.Text>}
+                  title={
+                    <Space>
+                      <Typography.Text strong>{t.name}</Typography.Text>
+                      {t.mode === 'compliance' && <Tag color="purple" style={{ marginInlineStart: 0 }}>合规</Tag>}
+                    </Space>
+                  }
                   description={
                     <Space size={4} wrap>
-                      <Tag>{t.steps.length} 步</Tag>
+                      <Tag>{t.mode === 'compliance' ? `${(t.clauseBindings ?? []).length} 条款` : `${t.steps.length} 步`}</Tag>
                       <Tag>v{t.revision}</Tag>
-                      {t.toolRefs.map((r) => (
+                      {t.mode !== 'compliance' && t.toolRefs.map((r) => (
                         <Tag key={r.toolId} color="blue">{toolName(r.toolId)}</Tag>
                       ))}
                     </Space>
@@ -328,7 +375,14 @@ export default function Templates() {
               extra={
                 <Space>
                   <Button icon={<SafetyCertificateOutlined />} onClick={() => setCoverageId(selected.id)}>覆盖度</Button>
-                  <Button icon={<EditOutlined />} onClick={() => openEdit(selected)}>编辑</Button>
+                  <Button icon={<EditOutlined />} onClick={() => {
+                    if (selected.mode === 'compliance') {
+                      setComplianceEditing(selected);
+                      setComplianceOpen(true);
+                    } else {
+                      openEdit(selected);
+                    }
+                  }}>编辑</Button>
                   <Button icon={<CopyOutlined />} onClick={() => void clone(selected)}>克隆</Button>
                   <Popconfirm title="确认删除该模板？" onConfirm={() => void remove(selected)}>
                     <Button danger icon={<DeleteOutlined />}>删除</Button>
@@ -519,6 +573,13 @@ export default function Templates() {
         open={!!coverageId}
         templateId={coverageId ?? ''}
         onClose={() => setCoverageId(undefined)}
+      />
+
+      <ComplianceTemplateEditor
+        open={complianceOpen}
+        template={complianceEditing}
+        onClose={() => { setComplianceOpen(false); setComplianceEditing(null); }}
+        onSave={saveCompliance}
       />
     </Layout>
   );

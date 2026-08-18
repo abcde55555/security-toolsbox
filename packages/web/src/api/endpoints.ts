@@ -63,6 +63,12 @@ export const ToolsApi = {
   remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/tools/${id}`),
   healthCheck: (id: string) => api.post<{ id: string; healthStatus: string }>(`/tools/${id}/health-check`),
   references: (id: string) => api.get<unknown[]>(`/tools/${id}/references`),
+  verdictCapabilities: (id: string) =>
+    api.get<{
+      toolId: string;
+      interactionMode: string;
+      clauses: Array<{ clauseId: string; title: string; severity: string }>;
+    }>(`/tools/${id}/verdict-capabilities`),
   testCommand: (body: {
     commandTemplate: string;
     params?: Record<string, unknown>;
