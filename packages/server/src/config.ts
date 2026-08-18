@@ -49,7 +49,7 @@ const defaultDataDir = path.join(repoRoot, 'data');
 
 export const config: AppConfig = {
   port: envInt('PORT', 3000),
-  host: env('HOST', '127.0.0.1'),
+  host: env('HOST', '0.0.0.0'),
   nodeEnv: env('NODE_ENV', 'development'),
   dataDir: env('DATA_DIR', defaultDataDir),
   dbPath: env('DB_PATH', path.join(defaultDataDir, 'sqlite', 'app.db')),

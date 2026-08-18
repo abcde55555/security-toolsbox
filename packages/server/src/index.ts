@@ -31,14 +31,33 @@ process.on('uncaughtException', (err) => {
 function isAllowedHost(host: string | undefined): boolean {
   if (!host) return false;
   const hostname = host.split(':')[0].replace(/^\[|\]$/g, '').toLowerCase();
-  return config.allowedHosts.some((allowed) => allowed.toLowerCase() === hostname);
+  if (config.allowedHosts.some((allowed) => allowed.toLowerCase() === hostname)) {
+    return true;
+  }
+  // When binding to all interfaces (0.0.0.0), accept loopback, LAN, and
+  // private/loopback IPs so the app is reachable on the machine's real address.
+  if (config.host === '0.0.0.0') {
+    if (hostname === 'localhost' || hostname === '::1') return true;
+    if (/^127\./.test(hostname)) return true;
+    if (/^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)) return true;
+    // bare hostname (no dot) on a LAN
+    if (!hostname.includes('.')) return true;
+  }
+  return false;
 }
 
 function corsOrigin(origin: string | undefined, cb: (err: Error | null, allow?: unknown) => void): void {
   if (!origin) return cb(null, true);
   try {
     const { hostname } = new URL(origin);
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    if (
+      hostname === 'localhost' ||
+      hostname === '::1' ||
+      /^127\./.test(hostname) ||
+      (config.host === '0.0.0.0' &&
+        (/^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname) ||
+          !hostname.includes('.')))
+    ) {
       return cb(null, origin);
     }
   } catch {
