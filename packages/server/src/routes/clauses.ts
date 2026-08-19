@@ -221,15 +221,20 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
       repos.clauses.transaction((repo) => {
         list.forEach((raw, i) => {
           try {
-            const c = raw as Partial<Clause>;
+            const c = raw as Partial<Clause> & { children?: unknown };
             if (!c || typeof c !== 'object') throw new Error('不是有效的条款对象');
             if (!c.clauseId) throw new Error('缺少 clauseId');
             if (!c.title) throw new Error('缺少 title');
-            // Default standardVersion to the query param so pasting clauses
-            // without one imports into the currently viewed standard.
-            const standardVersion = c.standardVersion ?? q.standardVersion;
-            if (!standardVersion) throw new Error('缺少 standardVersion（可在URL参数指定）');
+            // When importing from a standard's page (?standardVersion=),
+            // always import into THAT standard, ignoring the standardVersion
+            // embedded in the JSON (copying clauses between standards). The
+            // embedded value is only used as a fallback.
+            const standardVersion = q.standardVersion ?? c.standardVersion;
+            if (!standardVersion) throw new Error('缺少 standardVersion');
+            // Tree-exported JSON carries nested `children`; drop it.
+            const { children: _ignored, ...clean } = c;
             repo.upsert({
+              ...clean,
               clauseId: String(c.clauseId),
               title: String(c.title),
               standardVersion: String(standardVersion),
