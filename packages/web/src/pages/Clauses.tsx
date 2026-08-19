@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Layout, Card, Button, Tag, Space, Typography, Empty, Spin, Table, Modal, Form, Input,
-  Select, message, Popconfirm, Tabs,
+  Select, message, Popconfirm, Tabs, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, CodeOutlined,
@@ -334,7 +334,34 @@ export default function Clauses() {
                       {r.parentId ? null : <Tag color="geekblue">章节</Tag>}
                     </Space>
                   ) },
-                  { title: '标题', dataIndex: 'title' },
+                  {
+                    title: '标题', dataIndex: 'title',
+                    render: (v: string, r) => (
+                      <Tooltip
+                        title={
+                          r.description ? (
+                            <div style={{ maxWidth: 360 }}>
+                              <div style={{ marginBottom: 4 }}>{r.description}</div>
+                              {r.testingMethod && (
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                  测试方法：{r.testingMethod}
+                                </Typography.Text>
+                              )}
+                            </div>
+                          ) : (
+                            '暂无描述'
+                          )
+                        }
+                        placement="topLeft"
+                        overlayStyle={{ maxWidth: 400 }}
+                      >
+                        <span style={{ cursor: 'help', borderBottom: '1px dashed transparent' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = '#cbd5e1')}
+                          onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = 'transparent')}
+                        >{v}</span>
+                      </Tooltip>
+                    ),
+                  },
                   { title: '等级', dataIndex: 'level', width: 70, render: (v: string) => <Tag color="blue">{v}</Tag> },
                   { title: '严重度', dataIndex: 'defaultSeverity', width: 90, render: (v: string) => <Tag color={v === 'high' ? 'red' : v === 'middle' ? 'orange' : 'default'}>{severityText[v as keyof typeof severityText] ?? v}</Tag> },
                   { title: '子项', key: 'children', width: 70, render: (_, r) => r.children?.length ? <Tag>{r.children.length}</Tag> : '-' },

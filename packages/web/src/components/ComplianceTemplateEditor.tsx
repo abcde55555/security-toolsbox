@@ -319,10 +319,26 @@ export default function ComplianceTemplateEditor({ open, template, onClose, onSa
                     size="small"
                     style={{ marginBottom: 12 }}
                     title={
-                      <Space>
-                        <Tag color="geekblue">{clauseId}</Tag>
-                        <span>{clause?.title ?? clauseId}</span>
-                      </Space>
+                      <Tooltip
+                        title={
+                          clause?.description ? (
+                            <div style={{ maxWidth: 360 }}>
+                              <div style={{ marginBottom: 4 }}>{clause.description}</div>
+                              {clause.testingMethod && (
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                  测试方法：{clause.testingMethod}
+                                </Typography.Text>
+                              )}
+                            </div>
+                          ) : undefined
+                        }
+                        placement="topLeft"
+                      >
+                        <Space style={{ cursor: clause?.description ? 'help' : 'default' }}>
+                          <Tag color="geekblue">{clauseId}</Tag>
+                          <span>{clause?.title ?? clauseId}</span>
+                        </Space>
+                      </Tooltip>
                     }
                     extra={
                       <Button size="small" icon={<PlusOutlined />} onClick={() => addStep(clauseId)}>
@@ -485,10 +501,15 @@ function buildTreeData(nodes: ClauseNode[]): TreeNode[] {
     return {
       key: n.clauseId,
       title: (
-        <Space size={4}>
-          <span>{n.clauseId}</span>
-          <span style={{ color: '#64748b', fontSize: 12 }}>{n.title}</span>
-        </Space>
+        <Tooltip
+          title={n.description ? <div style={{ maxWidth: 320 }}>{n.description}</div> : undefined}
+          placement="right"
+        >
+          <Space size={4}>
+            <span>{n.clauseId}</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>{n.title}</span>
+          </Space>
+        </Tooltip>
       ),
       isLeaf: !hasChildren,
       selectable: !hasChildren,
