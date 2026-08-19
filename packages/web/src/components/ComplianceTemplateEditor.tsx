@@ -291,11 +291,38 @@ export default function ComplianceTemplateEditor({ open, template, onClose, onSa
               <Empty description="该标准暂无条款" image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
               <Tree
+                checkable
                 checkedKeys={Array.from(selectedClauses)}
-                onCheck={(_, info) => {
-                  // only allow checking leaf clauses
-                  const node = info.node;
-                  if (node.isLeaf) toggleClause(node.key as string);
+                onCheck={(_keys, info) => {
+                  const node = info.node as { key: string; isLeaf?: boolean; children?: unknown[] };
+                  if (node.isLeaf) {
+                    toggleClause(node.key);
+                  } else {
+                    // Toggling a parent checks/unchecks all its leaf descendants.
+                    const leaves = collectLeafKeys(node);
+                    const checking = info.checked;
+                    setSelectedClauses((prev) => {
+                      const next = new Set(prev);
+                      if (checking) leaves.forEach((l) => next.add(l));
+                      else leaves.forEach((l) => next.delete(l));
+                      return next;
+                    });
+                    // Ensure maps exist for newly checked clauses.
+                    if (checking) {
+                      setStepsByClause((prev) => {
+                        const m = new Map(prev);
+                        leaves.forEach((l) => { if (!m.has(l)) m.set(l, []); });
+                        return m;
+                      });
+                      setAggregation((prev) => {
+                        const m = new Map(prev);
+                        leaves.forEach((l) => {
+                          if (!m.has(l)) m.set(l, { mode: 'cross_check', strategy: 'all_pass' });
+                        });
+                        return m;
+                      });
+                    }
+                  }
                 }}
                 treeData={buildTreeData(clauseTree)}
                 defaultExpandAll
@@ -511,10 +538,25 @@ function buildTreeData(nodes: ClauseNode[]): TreeNode[] {
           </Space>
         </Tooltip>
       ),
+      // Parent nodes are clickable (to check all leaves) but not selectable rows.
       isLeaf: !hasChildren,
-      selectable: !hasChildren,
-      disabled: hasChildren,
+      selectable: false,
+      disabled: false,
       children: hasChildren ? buildTreeData(n.children!) : undefined,
     };
   });
+}
+
+/** Collect all leaf clauseIds under a tree node (the clicked node included). */
+function collectLeafKeys(node: { key: string; isLeaf?: boolean; children?: unknown[] }): string[] {
+  const out: string[] = [];
+  const walk = (n: typeof node): void => {
+    if (n.isLeaf || !n.children || n.children.length === 0) {
+      out.push(n.key);
+      return;
+    }
+    n.children.forEach((c) => walk(c as typeof node));
+  };
+  walk(node);
+  return out;
 }
