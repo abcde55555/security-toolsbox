@@ -223,7 +223,11 @@ export const ClausesApi = {
     api.del<{ clauseId: string; deleted: boolean }>(`/clauses/${clauseId}?standardVersion=${standardVersion}`),
   tree: (standardVersion = 'EN18031:2019') =>
     api.get<ClauseNode[]>(`/clauses/tree?standardVersion=${standardVersion}`),
-  batchImport: (clauses: unknown[]) => api.post<{ imported: number }>('/clauses/batch-import', clauses),
+  batchImport: (clauses: unknown[], standardVersion?: string) =>
+    api.post<{ imported: number; total: number; errors: Array<{ index: number; clauseId?: string; error: string }> }>(
+      `/clauses/batch-import${standardVersion ? `?standardVersion=${encodeURIComponent(standardVersion)}` : ''}`,
+      clauses,
+    ),
   mappingRules: (toolId?: string) =>
     api.get<ClauseMappingRule[]>(`/clause-mapping-rules${toolId ? `?toolId=${toolId}` : ''}`),
   createMappingRule: (body: unknown) => api.post<ClauseMappingRule>('/clause-mapping-rules', body),

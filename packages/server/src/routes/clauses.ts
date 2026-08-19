@@ -211,11 +211,44 @@ export async function clauseRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/clauses/batch-import', { preHandler: requireRole('admin') }, async (req, reply) => {
     try {
-      const clauses = req.body as Clause[];
+      const clauses = req.body as unknown[];
+      const q = req.query as { standardVersion?: string };
       const repos = getServices().repos;
       const list = Array.isArray(clauses) ? clauses : [];
-      for (const c of list) repos.clauses.upsert(c);
-      ok(reply, { imported: list.length });
+      const errors: Array<{ index: number; clauseId?: string; error: string }> = [];
+      let imported = 0;
+      // Normalize and import in a single transaction so partial failures are clear.
+      repos.clauses.transaction((repo) => {
+        list.forEach((raw, i) => {
+          try {
+            const c = raw as Partial<Clause>;
+            if (!c || typeof c !== 'object') throw new Error('不是有效的条款对象');
+            if (!c.clauseId) throw new Error('缺少 clauseId');
+            if (!c.title) throw new Error('缺少 title');
+            // Default standardVersion to the query param so pasting clauses
+            // without one imports into the currently viewed standard.
+            const standardVersion = c.standardVersion ?? q.standardVersion;
+            if (!standardVersion) throw new Error('缺少 standardVersion（可在URL参数指定）');
+            repo.upsert({
+              clauseId: String(c.clauseId),
+              title: String(c.title),
+              standardVersion: String(standardVersion),
+              chapter: c.chapter as string | undefined,
+              description: c.description as string | undefined,
+              level: c.level as Clause['level'] | undefined,
+              testingMethod: c.testingMethod,
+              defaultSeverity: c.defaultSeverity as Clause['defaultSeverity'] | undefined,
+              parentId: c.parentId ?? undefined,
+              tags: c.tags as string[] | undefined,
+            });
+            imported++;
+          } catch (e) {
+            const c = (raw ?? {}) as { clauseId?: string };
+            errors.push({ index: i, clauseId: c.clauseId, error: (e as Error).message });
+          }
+        });
+      });
+      ok(reply, { imported, total: list.length, errors });
     } catch (e) {
       handleError(reply, e);
     }

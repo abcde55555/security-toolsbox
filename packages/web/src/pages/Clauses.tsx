@@ -195,8 +195,26 @@ export default function Clauses() {
     try {
       const arr = JSON.parse(jsonText);
       if (!Array.isArray(arr)) { message.error('需要条款数组 JSON'); return; }
-      const res = await ClausesApi.batchImport(arr);
-      message.success(`已导入 ${res.imported} 条条款`);
+      // Import into the currently viewed standard when clauses omit one.
+      const res = await ClausesApi.batchImport(arr, activeStd);
+      if (res.errors.length > 0) {
+        message.warning(`导入 ${res.imported}/${res.total} 条，${res.errors.length} 条失败`);
+        Modal.warning({
+          title: '部分条款导入失败',
+          width: 560,
+          content: (
+            <ul style={{ maxHeight: 300, overflow: 'auto', margin: 0, paddingLeft: 18 }}>
+              {res.errors.map((e, i) => (
+                <li key={i}>
+                  第 {e.index + 1} 条{e.clauseId ? ` (${e.clauseId})` : ''}：{e.error}
+                </li>
+              ))}
+            </ul>
+          ),
+        });
+      } else {
+        message.success(`已导入 ${res.imported} 条条款`);
+      }
       setJsonOpen(false);
       await loadClauses(activeStd);
     } catch (e) {

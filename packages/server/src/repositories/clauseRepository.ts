@@ -6,7 +6,7 @@ import { parseJson, toJson } from './json.js';
 export class ClauseRepository {
   constructor(private db: Database) {}
 
-  upsert(clause: Clause): void {
+  upsert(clause: Partial<Clause> & { clauseId: string; standardVersion: string; title: string }): void {
     const now = nowIso();
     this.db
       .prepare(
@@ -22,12 +22,12 @@ export class ClauseRepository {
       .run({
         clauseId: clause.clauseId,
         standardVersion: clause.standardVersion,
-        chapter: clause.chapter,
+        chapter: clause.chapter ?? '未分类',
         title: clause.title,
-        description: clause.description,
-        level: clause.level,
+        description: clause.description ?? '',
+        level: clause.level ?? 'L2',
         testingMethod: clause.testingMethod ?? null,
-        defaultSeverity: clause.defaultSeverity,
+        defaultSeverity: clause.defaultSeverity ?? 'middle',
         parentId: clause.parentId ?? null,
         tags: toJson(clause.tags ?? []),
         createdAt: now,
@@ -198,5 +198,11 @@ export class ClauseRepository {
 
   deleteMappingRule(id: string): void {
     this.db.prepare('DELETE FROM clause_mapping_rules WHERE id = ?').run(id);
+  }
+
+  /** Run a batch of upserts inside a single transaction. */
+  transaction<T>(fn: (repo: ClauseRepository) => T): T {
+    const tx = this.db.transaction(() => fn(this));
+    return tx();
   }
 }
