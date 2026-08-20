@@ -84,3 +84,8 @@ html, body, #root {
 .clause-pass { color: #16a34a; font-weight: 600; }
 .clause-fail { color: #dc2626; font-weight: 600; }
 .clause-na { color: #6b7280; }
+
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

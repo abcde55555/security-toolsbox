@@ -84,7 +84,61 @@ export const ToolsApi = {
       durationMs: number;
       matchedRules: Array<{ clauseId: string; pattern: string; matcherType: string; onMatch: string }>;
     }>('/test-command', body),
+
+  /**
+   * Stream a test command's output line-by-line. Calls onEvent for each NDJSON
+   * event; resolves when the stream ends. Event shapes:
+   *   {type:'start', command} | {type:'stdout'|'stderr', line}
+   *   | {type:'done', exitCode, status, durationMs, matchedRules}
+   *   | {type:'error', message}
+   */
+  testCommandStream: async (
+    body: { commandTemplate: string; params?: Record<string, unknown>; timeoutMs?: number; toolId?: string },
+    onEvent: (ev: StreamTestEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const res = await fetch('/api/test-command/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`测试请求失败 (${res.status})`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          onEvent(JSON.parse(line) as StreamTestEvent);
+        } catch {
+          // ignore malformed line
+        }
+      }
+    }
+    if (buffer.trim()) {
+      try { onEvent(JSON.parse(buffer) as StreamTestEvent); } catch { /* ignore */ }
+    }
+  },
 };
+
+export type StreamTestEvent =
+  | { type: 'start'; command: string }
+  | { type: 'stdout' | 'stderr'; line: string }
+  | {
+      type: 'done';
+      exitCode: number | null;
+      status: string;
+      durationMs: number;
+      matchedRules: Array<{ clauseId: string; pattern: string; onMatch: string }>;
+    }
+  | { type: 'error'; message: string };
 
 export const TemplatesApi = {
   list: () => api.get<Template[]>('/templates'),

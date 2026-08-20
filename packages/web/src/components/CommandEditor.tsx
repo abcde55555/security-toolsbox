@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal, Form, Input, InputNumber, Select, Switch, Button, Space, Typography, Tag,
   Tooltip, Alert, Divider, Row, Col, message,
@@ -106,6 +106,16 @@ export default function CommandEditor({
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<Awaited<ReturnType<typeof ToolsApi.testCommand>> | null>(null);
+  // Live terminal output lines accumulated during a streamed test run.
+  const [liveLines, setLiveLines] = useState<Array<{ stream: 'cmd' | 'stdout' | 'stderr'; text: string }>>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const terminalRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll the live terminal to the bottom as lines arrive.
+  useEffect(() => {
+    const el = terminalRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [liveLines]);
   // Sample values for {{placeholders}} when running a test, keyed by param id.
   const [testValues, setTestValues] = useState<Record<string, string>>({});
 
@@ -117,8 +127,14 @@ export default function CommandEditor({
       setDismissed(new Set());
       setTestResult(null);
       setTestValues({});
+      setLiveLines([]);
     }
   }, [open, command]);
+
+  // Abort any in-flight streamed test when the editor closes.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const runTest = async () => {
     if (!draft.commandTemplate.trim()) {
@@ -127,20 +143,47 @@ export default function CommandEditor({
     }
     setTesting(true);
     setTestResult(null);
+    setLiveLines([]);
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
-      const result = await ToolsApi.testCommand({
-        commandTemplate: draft.commandTemplate,
-        params: testValues,
-        timeoutMs: draft.timeoutMs,
-        toolId,
-      });
-      setTestResult(result);
+      await ToolsApi.testCommandStream(
+        {
+          commandTemplate: draft.commandTemplate,
+          params: testValues,
+          timeoutMs: draft.timeoutMs,
+          toolId,
+        },
+        (ev) => {
+          if (ev.type === 'start') {
+            setLiveLines((l) => [...l, { stream: 'cmd', text: ev.command }]);
+          } else if (ev.type === 'stdout' || ev.type === 'stderr') {
+            setLiveLines((l) => [...l, { stream: ev.type, text: ev.line }]);
+          } else if (ev.type === 'done') {
+            setTestResult({
+              command: draft.commandTemplate,
+              exitCode: ev.exitCode,
+              status: ev.status,
+              stdout: '',
+              stderr: '',
+              durationMs: ev.durationMs,
+              matchedRules: ev.matchedRules.map((r) => ({ ...r, matcherType: '' })),
+            });
+          } else if (ev.type === 'error') {
+            setLiveLines((l) => [...l, { stream: 'stderr', text: `错误: ${ev.message}` }]);
+          }
+        },
+        ac.signal,
+      );
     } catch (e) {
-      reportError(e);
+      if ((e as Error).name !== 'AbortError') reportError(e);
     } finally {
       setTesting(false);
+      abortRef.current = null;
     }
   };
+
+  const cancelTest = () => abortRef.current?.abort();
 
   const placeholders = useMemo(
     () => extractPlaceholders(draft.commandTemplate),
@@ -529,16 +572,45 @@ export default function CommandEditor({
             ))}
           </Row>
         )}
-        <Button
-          type="default"
-          icon={<PlayCircleOutlined />}
-          loading={testing}
-          onClick={runTest}
-          style={{ marginBottom: 8 }}
-        >
-          执行测试
-        </Button>
-        {testResult && (
+        <Space style={{ marginBottom: 8 }}>
+          <Button
+            type="default"
+            icon={<PlayCircleOutlined />}
+            loading={testing}
+            onClick={runTest}
+          >
+            执行测试
+          </Button>
+          {testing && (
+            <Button danger size="small" onClick={cancelTest}>
+              终止
+            </Button>
+          )}
+        </Space>
+        {(liveLines.length > 0 || testing) && (
+          <div className="mono" style={{
+            padding: '10px 12px', background: '#0b1020', color: '#d6e2f5',
+            borderRadius: 6, fontSize: 12, lineHeight: 1.5,
+            maxHeight: 280, overflow: 'auto', marginBottom: 8,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          }} ref={terminalRef}>
+            {liveLines.map((l, i) => (
+              <div
+                key={i}
+                style={{
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  color: l.stream === 'cmd' ? '#60a5fa' : l.stream === 'stderr' ? '#fca5a5' : '#d6e2f5',
+                }}
+              >
+                {l.stream === 'cmd' ? `$ ${l.text}` : l.text}
+                {testing && i === liveLines.length - 1 && (
+                  <span style={{ color: '#64748b', animation: 'terminal-blink 1s steps(2) infinite' }}> ▋</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {testResult && !testing && (
           <div>
             <Space style={{ marginBottom: 6 }} wrap>
               <Tag color={testResult.exitCode === 0 ? 'green' : 'red'}>
@@ -554,15 +626,6 @@ export default function CommandEditor({
                 <Tag>无规则命中</Tag>
               )}
             </Space>
-            <div className="mono" style={{
-              padding: '8px 10px', background: '#0b1020', color: '#d6e2f5',
-              borderRadius: 6, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-              maxHeight: 200, overflow: 'auto',
-            }}>
-              <div style={{ color: '#64748b' }}>$ {testResult.command}</div>
-              {testResult.stdout && <div style={{ marginTop: 4 }}>{testResult.stdout}</div>}
-              {testResult.stderr && <div style={{ color: '#fca5a5', marginTop: 4 }}>{testResult.stderr}</div>}
-            </div>
             {testResult.matchedRules.length > 0 && (
               <div style={{ marginTop: 6 }}>
                 {testResult.matchedRules.map((r) => (

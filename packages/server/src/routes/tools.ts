@@ -233,4 +233,96 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
       handleError(reply, e);
     }
   });
+
+  // Stream a test command's output line-by-line as newline-delimited JSON.
+  // The frontend reads this with fetch + ReadableStream to render a live
+  // terminal. Events: {type:'start',command}, {type:'stdout',line},
+  // {type:'stderr',line}, {type:'done',exitCode,status,durationMs,matchedRules}.
+  app.post('/api/test-command/stream', { preHandler: requireRole('template_manager') }, async (req, reply) => {
+    try {
+      const services = getServices();
+      const b = (req.body ?? {}) as {
+        commandTemplate?: string;
+        params?: Record<string, unknown>;
+        timeoutMs?: number;
+        toolId?: string;
+      };
+      const template = (b.commandTemplate ?? '').trim();
+      if (!template) throw Errors.validation('commandTemplate 必填');
+
+      const params = b.params ?? {};
+      let fullCommand = template;
+      const missing: string[] = [];
+      fullCommand = fullCommand.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (_m, key) => {
+        const v = params[key];
+        if (v === undefined || v === null || v === '') {
+          missing.push(key);
+          return '';
+        }
+        return String(v);
+      });
+      if (missing.length > 0) throw Errors.validation(`缺少参数: ${missing.join(', ')}`);
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      const send = (obj: unknown) => {
+        reply.raw.write(JSON.stringify(obj) + '\n');
+      };
+      send({ type: 'start', command: fullCommand });
+
+      // Collect output for rule matching at the end.
+      let allOutput = '';
+      const { CommandExecutor } = await import('../engine/commandExecutor.js');
+      const executor = new CommandExecutor();
+      const result = await executor.runCommand(fullCommand, {
+        timeoutMs: b.timeoutMs ?? 30000,
+        collectOutput: true,
+        onProgress: (p) => {
+          if ('logLine' in p && p.logLine) {
+            allOutput += p.logLine + '\n';
+            send({ type: p.stream ?? 'stdout', line: p.logLine });
+          } else if ('message' in p && p.message) {
+            send({ type: 'stderr', line: p.message });
+          }
+        },
+      });
+
+      let matched: Array<{ clauseId: string; pattern: string; onMatch: string }> = [];
+      if (b.toolId) {
+        const rules = services.repos.clauses.listMappingRules(b.toolId);
+        matched = rules
+          .filter((r) => {
+            try {
+              return r.matcherType === 'regex'
+                ? new RegExp(r.pattern, 'm').test(allOutput)
+                : allOutput.includes(r.pattern);
+            } catch {
+              return false;
+            }
+          })
+          .map((r) => ({ clauseId: r.clauseId, pattern: r.pattern, onMatch: r.onMatch }));
+      }
+
+      send({
+        type: 'done',
+        exitCode: result.exitCode,
+        status: result.status,
+        durationMs: result.durationMs,
+        matchedRules: matched,
+      });
+      reply.raw.end();
+    } catch (e) {
+      // If headers not sent yet, use normal error handling; otherwise stream it.
+      if (!reply.raw.headersSent) {
+        handleError(reply, e);
+      } else {
+        reply.raw.write(JSON.stringify({ type: 'error', message: (e as Error).message }) + '\n');
+        reply.raw.end();
+      }
+    }
+  });
 }
