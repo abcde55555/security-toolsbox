@@ -15,7 +15,7 @@
 3. **AI 不碰裸 shell、不跳过人工步骤**：命令只走模组/已注册工具；人工步骤 Promise 只能由人 resolve。
 4. **可回放、可审计**：所有工具调用/模型响应/人工动作/阶段切换写 append-only `agent_events` + `audit_logs`。
 5. **渐进交付**：P0 铺数据底座（无 AI 也能跑），P1 跑通端到端主链路，P2/P3 放开能力。每个阶段独立可验证。
-6. **P1 验收目标**：一个真实设备（Z6s，skill 种子）+ 一个条款族（GEC 网络外部接口），Agent 动态给 A/B 步骤 → 人工完成 → C 判定 → 审核 → 出报告，并主动给出沉淀通知。
+6. **P1 验收目标**：一个真实设备（Z6s，skill 种子）+ 一个条款族（**GEC 通用外部接口，GEC-1..GEC-8，以 CSV/系统条款库为准**），Agent 动态给 A/B 步骤 → 人工完成 → C 判定 → 审核 → 出报告，并主动给出沉淀通知。条款编号一律以 `EN18031评估信息表 - 评估方法总览表.csv` 和系统 `EN18031:2019` 标准下已填的族缩写条款为准，不臆造编号。
 
 ---
 
@@ -24,7 +24,7 @@
 | 阶段 | 目标 | 人日 | 关键验收 |
 |---|---|---|---|
 | **P0** | 数据底座 + 证据上传 + 类型/API 契约；前端骨架 | 8-12 | 迁移在空/老库通过；老报告不回归；mock 事件能渲染会话页骨架 |
-| **P1** | Agent 人机协同端到端主链路 | 25-30 | Z6s + GEC 端到端；AI 建议通知；知识闭环 |
+| **P1** | Agent 人机协同端到端主链路 | 25-30 | Z6s + GEC 族（CSV 对齐后的 GEC-1..GEC-8）端到端；AI 建议通知；知识闭环 |
 | **P2** | 能力放开（案例反哺、向量检索、设备工具、模板沉淀） | 1-2 月 | 多模块并行、审批对接、会话完善 |
 | **P3** | dsh SDK 子进程接入（探索性诊断） | dsh 1.0 后 | 子进程隔离、双写、版本锁 |
 
@@ -60,13 +60,26 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
 - **做什么**：`ArtifactRepository`（type/content/fileRefs/functionModule/agentSessionId）+ `GET/POST /api/agent/sessions/:id/artifacts`。
 - **验收**：A 阶段写设备档案/拓扑能存取；按 session 列出。
 
-#### T-BE-04 报告 reviewStatus 过滤
+#### T-BE-04 报告 reviewStatus 过滤（审核门控）
 - **做什么**：`ReportService.generateReport`/`getReportDetail`/`exportExcel` 所有 verdict 查询加 `WHERE reviewStatus='approved'`；`pending_review/rejected/skipped` 不算 pass。
-- **验收**：老数据（默认 approved）定级不变；插一条 pending verdict 不进定级。
+- **为什么**：Agent 生成的判定是"草案"，必须人审核通过才进合规定级；这是把"AI 判定"和"合规结论"分开的关键门控。模板老流程（非 agent-guided）产生的 verdict 迁移时默认 `approved`，行为不变。
+- **验收**：
+  - 老数据（`reviewStatus='approved'` 默认值）定级与改造前完全一致；
+  - 插一条 `pending_review` verdict 不进定级、不计 pass；
+  - `rejected` 后重跑产生的新 verdict 仍为 pending，approve 后才计入。
 
-#### T-BE-05 GEC 种子条款补全
-- **做什么**：在 `clauseSeed.ts` 补 GEC 族缺的"物理外部接口/可选接口可配置/输入方法弹性"等条款（clauseId 续 `5.3-6/7/8`，tags 标 `GEC`），支撑 P1 验收。
-- **验收**：`listClauses` 能返回 GEC 完整判定项。
+#### T-BE-05 条款库以 CSV 为准对齐（不是新建 5.3-x）
+- **背景**：条款的权威来源是 `docs/agent/EN18031评估信息表 - 评估方法总览表.csv`（47 条，按机制族 ACM/AUM/SUM/SSM/SCM/RLM/NMM/TCM/CCK/GEC/CRY/LGM/DLM/UNM 组织，含 requirement 原文、测试条件、评估对象、概念/功能/充分性评估方法、适用 part -1/-2/-3）。系统 `standards=EN18031:2019` 下已按族缩写播种了条款（GEC-1..GEC-8、ACM-1..6 等），但 **`testingMethod` 等字段为空**；旧的 5.x 编号条款是早期原型，不作为 P1 验收依据。
+- **做什么**：
+  1. 写一个一次性导入/同步脚本（`packages/server/scripts/import-clauses-from-csv.mjs` 或 `db/clauseImport.ts`），读 CSV，按 clauseId（如 `GEC-2`、`AUM-1-1`）upsert 到 `EN18031:2019` 标准下，填充：`title`（中英）、`description`/requirement 原文、`testingMethod`（合并"概念评估+功能完整性+功能充分性"三列）、`level`（L1/L2/L3，按 CSV 适用 part 推断：-1/-3 偏 L1、-2 偏 L2，或单独存 `applicableParts` 字段）、`defaultSeverity`、tags（机制族）。
+  2. **不要新建 `5.3-6/7/8` 这类臆造编号**；CSV 里 GEC 族就是 GEC-1..GEC-8（注意没有 GEC-7 之后的"物理接口"是 GEC-5/GEC-6 范畴，以 CSV 行为准）。
+  3. 清理/标记 3 条 `X`/`CYC-*` 占位条款（确认无用后删除或标 `archived`）。
+  4. 旧 5.x 条款暂保留（模板流程可能在用），但 P1 的 agent-guided 会话只选 CSV 对齐后的族缩写条款。
+- **验收**：
+  - `SELECT count(*) FROM clauses WHERE standardVersion='EN18031:2019' AND testingMethod != ''` ≥ 47；
+  - GEC-2、SUM-2、CCK-1 等能查到完整的 requirement + testingMethod；
+  - 导入脚本幂等（跑两次不产生重复）；
+  - 前端"合规测试项"树展示族缩写 + 中文标题，与 CSV 一致。
 
 ### 2.2 前端 P0
 
@@ -121,6 +134,7 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
 
 #### T-BE-11 迁移 9：knowledge/skill/notification 表 + 种子
 - **做什么**：建 `knowledge_notes`、`skills`（skillKey+version 唯一、isCurrent）、`notifications`；`src/db/agentSeed.ts` 把 Z6s 调试经验作为**手写 approved 的 seed skill**（离线可用，也是 SkillCompiler 的 golden file）+ 一条 knowledge_note；`seed.ts` 调用。
+- **前置**：T-BE-05 的 CSV 对齐已完成（GEC 等条款 testingMethod 已填），seed skill 的"判定要点"节引用真实 clauseId（GEC-2、SUM-2 等），不引用 5.x 旧编号。
 - **验收**：`seedAgentKnowledge` 幂等；seed skill 能被关键词检索；结构与 AI 编译产物一致。
 
 #### T-BE-12 阶段状态机（phaseMachine）
@@ -196,6 +210,31 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
 ## 4. 数据模型（最终形态）
 
 > 迁移拆两个：**迁移 8**（P0：session/event/artifact + 各表字段扩展 + 触发器），**迁移 9**（P1：knowledge_notes/skills/notifications + seed）。SQLite 约定：JSON 存 TEXT、布尔 INTEGER 0/1、时间 TEXT(ISO)、主键 TEXT UUID。
+
+### 4.0 条款数据：以 CSV 为准（P0 必须先对齐）
+
+条款（clause）的权威来源是 `docs/agent/EN18031评估信息表 - 评估方法总览表.csv`，共 47 条，按机制族组织：
+
+| 机制族 | 条款 | part 适用 |
+|---|---|---|
+| ACM 访问控制 | ACM-1..6 | -1/-2/-3（ACM-3..6 仅 -2 玩具/儿童看护） |
+| AUM 身份认证 | AUM-1-1/-2/-3、AUM-2-1、AUM-2-2、AUM-3、AUM-4、AUM-5-1、AUM-5-2、AUM-6（CSV 中 AUM-2(-1)/AUM-5 分别归一为 AUM-2-1/AUM-5-1） | -1/-2/-3 |
+| SUM 软件更新 | SUM-1..3 | -1/-2/-3 |
+| SSM 安全存储 | SSM-1..3 | -1/-2/-3 |
+| SCM 安全通信 | SCM-1..4 | -1/-2/-3 |
+| CCK 机密密钥 | CCK-1..3 | -1/-2/-3 |
+| GEC 通用外部接口 | GEC-1、GEC-2、GEC-3、GEC-4、GEC-5、GEC-6、GEC-8（无 GEC-7，以 CSV 为准） | -1/-2/-3（GEC-8 仅 -3） |
+| CRY 密码学 | CRY-1 | -1/-2/-3 |
+| LGM 日志 | LGM-1..4 | -2/-3 |
+| DLM 删除 | DLM-1 | -2 |
+| UNM 用户通知 | UNM-1..2 | -2 |
+| RLM/NMM/TCM | 各 1 条 | -1 |
+
+> **part 含义**：-1=EN18031-1 通用、-2=EN18031-2 消费 IoT（玩具/儿童看护，含 ACM-3~6 等）、-3=EN18031-3 机器接口（无豁免）。可用 `applicableParts` 字段记录（JSON 数组），`level` 按 part/重要度映射。
+>
+> **CSV 列**：机制、适用 part、技术要求项目（clauseId+中英标题）、requirement 原文、项目需被测试的条件、评估对象、概念评估、功能完整性评估、功能充分性评估、涉及工具。导入时把"概念/功能完整性/功能充分性"合并为 `testingMethod`，requirement 原文存 `description`。
+>
+> 系统 `EN18031:2019` 标准下已有这些族缩写条款的骨架（部分 testingMethod 为空），也有一套旧的 5.x 编号条款（早期原型，agent-guided 会话**不使用**）。T-BE-05 的导入脚本负责把 CSV 内容 upsert 进现有族缩写条款。**不要新建 5.3-6/7/8 这类臆造编号**。
 
 ### 4.1 扩展现有表
 
@@ -330,12 +369,13 @@ BEGIN SELECT RAISE(ABORT,'verdict only in adjudication phase'); END;
 
 ## 10. P1 完成判据（DoD）
 
+- [ ] **条款库已按 CSV 对齐**：`EN18031:2019` 标准下 ≥47 条族缩写条款（GEC-1..8、ACM-1..6、AUM、SUM、SSM、SCM、CCK、CRY、GEC、LGM、DLM、UNM、RLM/NMM/TCM 等）的 requirement + testingMethod 已从 `EN18031评估信息表-评估方法总览表.csv` 同步，旧 5.x 条款不参与 agent-guided 会话。
 - [ ] Z6s skill 种子入库，新建 Z6s+GEC 会话时 Agent 能检索到并给出该设备的 A 阶段人工接入步骤。
 - [ ] 人工步骤完成（含截图上传）后 B 阶段证据带 functionModule 落库（clauseId=null）。
-- [ ] C 阶段 Agent 执行模组/命令并引用 B 证据产出 pending verdict；无证据条款 skipped；非 C 阶段写 verdict 被拒。
+- [ ] C 阶段 Agent 执行模组/命令并引用 B 证据产出 pending verdict（覆盖 GEC-1..GEC-8 中适用的条款）；无证据条款 skipped；非 C 阶段写 verdict 被拒。
 - [ ] D 阶段 approve 进定级；reject 一条只重跑该 clauseId 步骤；grade 由代码计算，与人工结论一致。
 - [ ] 过程产生 ≥1 条沉淀通知，接受后打开预填表单但不自动入库。
 - [ ] 知识库：写笔记→AI 编译 skill 草稿→人审核→新会话检索命中。
 - [ ] 所有动作在 agent_events（seq 连续）+ audit_logs 可回放；append-only 表 UPDATE/DELETE 被拒。
 - [ ] AI 不可用时主流程（手动编排/执行/报告）不受影响。
-- [ ] 单测 + 集成 + E2E（mock）全绿；现有 42 个测试不回归。
+- [ ] 单测 + 集成 + E2E（mock）全绿；现有测试不回归。
