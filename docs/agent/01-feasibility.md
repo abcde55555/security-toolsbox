@@ -122,15 +122,55 @@ Z6s 草稿暴露的真实情况（见 `小天才手表Z6s.md`）：
 - 用户可随时打断、补充信息让 Agent 调整计划。
 - 人工步骤有超时/挂起策略（提醒、归档），避免会话泄漏。
 
-### 3.6 设备差异从哪来：skill 知识库，不是硬编码
+### 3.6 知识沉淀闭环：经验笔记 → AI 编译成 skill → 下次可检索
 
-A/B 阶段"这台设备该怎么做"不能写死在代码里。来源应是：
+A/B 阶段"这台设备该怎么做"不能写死在代码里，也**不能指望人手写 skill 格式**（dsh 的 `SKILL.md` 带 frontmatter/结构化字段，人工编写门槛高）。需要一个"人写经验、AI 编译、机器检索、案例反哺"的闭环：
 
-1. **平台 skill 库**：把每类设备/平台的调试方法、接口开启步骤、常见工具沉淀成可检索的知识条目（类似 dsh 的 `SKILL.md`），按"品牌/平台/芯片"打标签。Agent 根据 A 阶段识别出的型号/平台（高通安卓、展锐 RTOS、Linux 摄像头、路由器 OpenWrt……）检索对应 skill，动态生成该设备的准备/收集步骤。
-2. **用户补充与修正**：用户可在会话中纠正 Agent 的步骤（如"这台不用短接，adb 直接开"），修正可沉淀回该型号的 skill（二期），越用越准。
-3. **设备档案驱动**：A 阶段产出的设备档案（型号、固件版本、开放接口）是后续 B/C 阶段选工具、选参数的依据。
+```
+工程师随手记经验笔记（自由文本/截图/链接）
+        │  AI 编译、结构化、打标签
+        ▼
+   skill 库（结构化、带标签、可检索、版本化）
+        │  Agent 按设备型号/平台检索加载
+        ▼
+   实际测试（Agent 生成 A/B 步骤，人工审核执行）
+        │  跑完一个案例后，把"有效做法/踩坑/修正"回灌
+        ▼
+   案例库 ──AI 提炼──► 更新/新增 skill（人工确认后入库）
+```
 
-因此平台要支持 skill 的录入/检索/版本管理；一期可先内置少量设备的 skill（含 Z6s 这类样例），验证动态规划闭环，不追求覆盖全部设备。
+#### 3.6.1 两种知识载体
+
+| 载体 | 谁写 | 形态 | 用途 |
+|---|---|---|---|
+| **经验笔记（note）** | 人 | 自由文本 + 截图/附件 + 标签（品牌/型号/平台/模块），Markdown | 降低录入门槛，工程师随手记 |
+| **skill** | AI 编译、人确认 | 结构化（frontmatter 标签 + 分节：适用范围、准备步骤、收集方法、判定要点、坑） | Agent 运行时检索加载，喂给模型 |
+
+关键：**人只写 note，skill 由 AI 从 note + 案例生成/更新**。平台提供"编译成 skill"按钮，AI 输出结构化 skill 草稿，人审核后入库。skill 格式借鉴 dsh `SKILL.md`（YAML frontmatter + Markdown 正文），但不要求人手写。
+
+#### 3.6.2 知识来源
+
+1. **人工经验笔记**：工程师在"知识库"页面直接写——如"展锐 RTOS 系列（Z6A/Z6S/Z6Pro）调试方法：装驱动→短接→RTOS 工具→输 `*#0769789#*` 开 U 盘"，配图。AI 编译成该平台的 skill。
+2. **设备档案/官网文档**：A 阶段 Agent 读官网/文档（URL），提取的接口信息可沉淀为该型号的 skill。
+3. **案例反哺**：每跑完一个真实设备测试，会话里的有效步骤、人工修正、踩坑（如"这台 adb 直连不用短接""nmap 要加 -Pn"）由 AI 提炼成"经验增量"，人确认后追加进对应 skill。案例库本身也可检索（相似设备/相似条款）。
+4. **条款测试方法**：条款库的 `testingMethod` 字段可编译成"判定类 skill"（某条款怎么测、看什么证据），供 C 阶段检索。
+
+#### 3.6.3 检索与版本
+
+- skill 带标签：品牌、型号/系列、芯片平台（高通/展锐/联发科/OpenWrt…）、设备类型（手表/摄像头/路由器…）、功能模块、适用条款。
+- Agent 在 A 阶段根据设备档案做**标签 + 向量/关键词混合检索**，只加载相关 skill 进上下文（控制 token）。
+- skill 版本化：每次 AI 更新留历史，可回滚；记录来源 note/案例，可追溯。
+- 一期可先用关键词检索 + 少量内置 skill（含 Z6s 样例），向量检索/案例反哺放 P2。
+
+#### 3.6.4 一期落地范围
+
+- 知识库 CRUD（note 的增删改查 + 附件/截图）
+- "AI 编译成 skill"接口：note 文本 → 结构化 skill 草稿 → 人确认 → 入库
+- skill 列表/标签/版本
+- Agent 规划时按设备型号/平台检索 skill（一期关键词匹配即可）
+- 案例反哺（跑完提炼经验增量）放 P2，一期先把"note → skill → 检索"闭环跑通
+
+这样解决两个痛点：skill 不用人手写格式；做过的案例能沉淀、下次可读、越用越准。
 
 ---
 
@@ -261,8 +301,10 @@ interface AiProvider {
 3. `evidences` 增加：`clauseId?`（可空）、`functionModule?`、`sourceStepType?`、`fileRef?`、`mimeType?`。
 4. 新表 `artifacts`：`id, projectRunId, type('device_profile'|'network_topology'|'onboarding_result'|'other'), content(json/text), fileRefs(json), createdAt`（clauseId 恒 null）。
 5. 新表 `agent_sessions`：`id, projectId, presetId(可选), phase, status, model, currentStepId, createdAt, updatedAt`；模型对话/工具调用事件可放 append-only `agent_events`（或复用审计日志）。
-6. `projects` 增加 `mode ('template'|'agent-guided')`。
-7. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
+6. 新表 `knowledge_notes`（经验笔记，人写）：`id, title, content(markdown), tags(json), attachments(json), author, createdAt, updatedAt`。
+7. 新表 `skills`（AI 编译后的结构化技能）：`id, title, frontmatter(json 标签/适用范围), body(markdown), sourceNoteIds(json), version, status('draft'|'approved'), author, createdAt, updatedAt`。
+8. `projects` 增加 `mode ('template'|'agent-guided')`。
+9. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
 
 > Z6s 笔记里的截图、pcap、固件、nmap 输出，都走 evidences.fileRef/artifacts.fileRefs 存 `filesDir/evidence/`，functionModule 标签对应"网络/蓝牙/升级/聊天/定位"等模块，与判定阶段的条款检索对齐。
 
@@ -332,16 +374,18 @@ interface AiProvider {
 - **skill 知识库最小版**：内置少量设备/平台的接入方法样例（含 Z6s 这类），支持按型号/平台检索，驱动 A 阶段动态规划
 - 人工步骤：指令卡片、完成/上传、继续、打断
 - Artifact 与 Evidence 管理（functionModule 标签、文件落库、跨阶段引用）
+- **知识库最小闭环（§3.6）**：经验笔记 CRUD + 附件；"AI 编译成 skill"接口（note → 结构化 skill 草稿 → 人确认入库）；skill 标签/版本；Agent 规划时按设备型号/平台关键词检索 skill
 - ClauseVerdict 审核流（pending/approve/reject + 按条款局部重跑 + 阶段回退）
 - 数据模型扩展 + 阶段边界校验
 - `/api/agent/*` 接口 + WebSocket 事件流
-- 前端：模块选择 → Agent 会话页（阶段时间线、指令卡片、工具输出、审核面板、工件视图）
+- 前端：模块选择 → Agent 会话页（阶段时间线、指令卡片、工具输出、审核面板、工件视图）；知识库页面（写笔记、编译 skill、管理标签/版本）
 - 报告：AI 叙述/整改建议（结构化字段代码算）；A/B 过程进附录
-- 单测：mock provider 测规划/工具桥/审核/阶段校验/降级
-- **范围控制**：一期只做"选条款 → 四阶段人机协同 → 审核 → 报告"主链路。验收目标是选**一个真实设备 + 一个条款族（如 GEC 网络外部接口）**，Agent 能根据该设备的 skill 动态给出 A/B 步骤、人工完成后跑 C 判定、出报告。Z6s 只是其中一个验证样例，不是固定流程；不追求一次覆盖所有设备和条款。
+- 单测：mock provider 测规划/工具桥/审核/阶段校验/降级/skill 编译
+- **范围控制**：一期只做"选条款 → 四阶段人机协同 → 审核 → 报告"主链路 + "笔记→skill→检索"知识闭环。验收目标是选**一个真实设备（用 Z6s 笔记作为首个 skill 样例）+ 一个条款族（如 GEC 网络外部接口）**，Agent 能根据该设备的 skill 动态给出 A/B 步骤、人工完成后跑 C 判定、出报告。不追求一次覆盖所有设备和条款。
 
 ### P2：能力放开（1-2 个月）
-- preset/skill 化：条款 testingMethod → skill；法规模块 → 可复用预设
+- **案例反哺**：跑完一个设备测试，AI 提炼有效做法/踩坑/人工修正为经验增量，人确认后追加进对应 skill
+- 向量/语义检索 skill 与历史案例（一期用关键词）
 - 设备操作工具（串口/继电器/packet-capture）正式化
 - 流程"另存为模板"：C 阶段稳定步骤沉淀为 Test Plan
 - 审批对接、Agent 会话页完善（工具调用记录、推理摘要、守护重启）
@@ -366,6 +410,8 @@ interface AiProvider {
 6. **阶段回退权限**：C→B 补采由 Agent 提议、用户确认即可，还是必须 template_manager 角色？
 7. **dsh 二期时机**：等 1.0 GA 还是指定人持续跟踪 rc？（建议等 1.0，但跟踪 Release/changelog）
 8. **"另存为模板"放 P2 是否认可**：固化流程是效率选项但非一期主线。
+9. **知识库录入方式**：一期是否认可"人写自由笔记 → AI 编译成 skill → 人确认入库"的闭环？skill 审核是 template_manager 还是任意 auditor？
+10. **案例反哺时机**：跑完一个设备后自动提炼经验增量（P2），还是一期就做手动"沉淀为经验"按钮？（建议一期做按钮、P2 做自动提炼）
 
 ---
 
