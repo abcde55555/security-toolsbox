@@ -328,6 +328,41 @@ interface AiProvider {
 - `reviewStatus` 默认 `pending_review`；只有 `approved` 进定级。
 - A/B 的 evidence `clauseId=null`，C 通过 `evidenceRefs` 跨阶段引用。
 
+### 5.6 点 AI 建议后发生什么（不是 dsh 工具调用）
+
+**一期 AI 通知的"接受"不触发模型现场调工具**，而是跳转到一个**预填好的确认表单**，由平台自己的 API 落库：
+
+| 通知类型 | 点"接受"后的效果 |
+|---|---|
+| 沉淀工具 | 打开"新建命令工具"表单，命令/参数/判定规则已根据本次执行预填，人确认后入库工具库 |
+| 沉淀 skill | 打开"AI 编译 skill"预览，AI 已生成 skill 草稿，人编辑确认后入库 |
+| 补证据 | 跳到对应条款/步骤的证据上传区（evidence_attach） |
+| 另存模板 | 把当前 C 阶段步骤填进模板编辑器，人确认后保存 |
+| 修正配置 | 跳到对应工具/设置项 |
+
+这样设计的原因：一期通知是"建议"，不应让模型在人没看见的情况下改数据；所有沉淀动作都走平台已有表单 + 人工确认，安全且可审计。
+
+### 5.7 Agent 执行可视化、记录与回看
+
+Agent 会话过程必须可看、可查、可继续。前端 Agent 会话页（§10 P1）包含：
+
+1. **时间线**：按阶段（A/B/C/D）展示每一步——步骤标题、类型图标（工具/人工/证据/分析）、状态、时间。
+2. **工具调用卡片**：Agent 每次 `function_call` 展开可见：
+   - 调了哪个工具（如 `run_module`）、入参是什么
+   - 执行输出（stdout/stderr 或结构化结果）、退出码、耗时、关联的证据/工件
+   - 复用现有 `Terminal` 组件和流式输出（`/api/test-command/stream` 同款）
+3. **模型对话记录**：每轮模型的规划/解释文本可折叠查看（折叠默认，避免干扰主流程）。
+4. **人工步骤卡片**：指令、完成按钮、上传的证据，与自动步骤在同一时间线上。
+
+**记录与回看**：
+
+- 每一次工具调用、模型响应、人工动作、阶段切换、通知，写入 `agent_events`（append-only）+ `step_runs`，可按 `agentSessionId` 回放。
+- `agent_sessions` 表记录会话状态/阶段/设备/条款集合，历史会话可在"会话列表"打开回看（只读）。
+- 回看支持**继续沟通**：未完成的会话可恢复（Agent 带着历史上下文继续）；已完成的会话也可"基于此案例新建会话"（复用设备档案/证据，重新分析）。
+- 所有记录同步写 `audit_logs`，满足合规可追溯。
+
+> 这套可见性是平台自建的（不依赖 dsh）。二期若接 dsh，其 session log 可作为额外回放来源，但平台自有 `agent_events` 仍是审计真源，双写保证不被 dsh 版本变更锁死。
+
 ---
 
 ## 6. 数据模型变更
@@ -336,12 +371,13 @@ interface AiProvider {
 2. `clause_verdicts` 增加：`reviewStatus ('pending_review'|'approved'|'rejected'|'skipped')`、`reviewedBy`、`reviewedAt`、`reviewNote`。
 3. `evidences` 增加：`clauseId?`（可空）、`functionModule?`、`sourceStepType?`、`fileRef?`、`mimeType?`。
 4. 新表 `artifacts`：`id, projectRunId, type('device_profile'|'network_topology'|'onboarding_result'|'other'), content(json/text), fileRefs(json), createdAt`（clauseId 恒 null）。
-5. 新表 `agent_sessions`：`id, projectId, presetId(可选), phase, status, model, currentStepId, createdAt, updatedAt`；模型对话/工具调用事件可放 append-only `agent_events`（或复用审计日志）。
-6. 新表 `knowledge_notes`（经验笔记，人写）：`id, title, content(markdown), tags(json), attachments(json), author, createdAt, updatedAt`。
-7. 新表 `skills`（AI 编译后的结构化技能）：`id, title, frontmatter(json 标签/适用范围), body(markdown), sourceNoteIds(json), version, status('draft'|'approved'), author, createdAt, updatedAt`。
-8. 新表 `notifications`（AI 主动建议，非阻塞）：`id, type('tool_sediment'|'skill_sediment'|'evidence_gap'|'template_save'|'config_fix'|'review_hint'), title, message, reason, payload(json, 携带建议内容/预填数据), sessionId, status('unread'|'accepted'|'dismissed'|'snoozed'), createdBy('agent'), createdAt, actedAt`。
-9. `projects` 增加 `mode ('template'|'agent-guided')`。
-10. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
+5. 新表 `agent_sessions`：`id, projectId, deviceProfile(json), selectedClauses(json), phase, status('planning'|'running'|'waiting_human'|'review'|'done'|'aborted'), model, currentStepId, createdAt, updatedAt, finishedAt`。
+6. 新表 `agent_events`（append-only，会话回放真源）：`id, sessionId, seq, type('model_message'|'tool_call'|'tool_result'|'human_step'|'phase_change'|'notification'|'error'), role, content(json/text), toolName, toolArgs(json), toolStatus, stepRunId, createdAt`。工具调用的 stdout/大字段可存文件引用，避免表膨胀。
+7. 新表 `knowledge_notes`（经验笔记，人写）：`id, title, content(markdown), tags(json), attachments(json), author, createdAt, updatedAt`。
+8. 新表 `skills`（AI 编译后的结构化技能）：`id, title, frontmatter(json 标签/适用范围), body(markdown), sourceNoteIds(json), version, status('draft'|'approved'), author, createdAt, updatedAt`。
+9. 新表 `notifications`（AI 主动建议，非阻塞）：`id, type('tool_sediment'|'skill_sediment'|'evidence_gap'|'template_save'|'config_fix'|'review_hint'), title, message, reason, payload(json, 携带建议内容/预填数据), sessionId, status('unread'|'accepted'|'dismissed'|'snoozed'), createdBy('agent'), createdAt, actedAt`。
+10. `projects` 增加 `mode ('template'|'agent-guided')`。
+11. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
 
 > Z6s 笔记里的截图、pcap、固件、nmap 输出，都走 evidences.fileRef/artifacts.fileRefs 存 `filesDir/evidence/`，functionModule 标签对应"网络/蓝牙/升级/聊天/定位"等模块，与判定阶段的条款检索对齐。
 
