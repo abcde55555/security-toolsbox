@@ -172,6 +172,42 @@ A/B 阶段"这台设备该怎么做"不能写死在代码里，也**不能指望
 
 这样解决两个痛点：skill 不用人手写格式；做过的案例能沉淀、下次可读、越用越准。
 
+### 3.7 AI 主动建议（notification）：不打断、只通知、人决策
+
+除了"人发指令 → AI 执行"的被动模式，AI 在测试过程中应能**主动观察、主动给建议，但绝不阻塞流程**。这与人工步骤（human_instruction，必须等人完成才继续）是两种完全不同的交互：
+
+| | 人工步骤 human_instruction | AI 建议 notification |
+|---|---|---|
+| 触发者 | 流程需要人操作 | AI 观察到可沉淀/可优化点 |
+| 是否阻塞 | **是**，等人完成才继续 | **否**，流程继续跑 |
+| 形式 | 指令卡片 + 完成按钮 | 通知中心一条建议，可稍后处理 |
+| 人做什么 | 必须执行（短接、抓包） | 可接受/忽略/稍后 |
+| 例子 | "请短接两个金点并开机" | "本次用到的 nmap 命令要不要沉淀成工具？" |
+
+#### 3.7.1 通知能建议什么
+
+原则：**平台上所有接入 AI 的能力，AI 都可根据自己的判断建议人去操作**。典型场景：
+
+- **沉淀工具**：本次测试手写/用了一条新命令（如某设备专用的串口读取命令、自定义 nmap 参数），且效果不错 → 建议"是否沉淀为工具库中的命令工具"，人审核后入库，下次可直接选。
+- **沉淀 skill/经验**：本次遇到新设备/新调试方法/踩坑（如"这台 RTOS 短接时间只有 5 秒"）→ 建议"是否追加到该型号的 skill"，AI 生成经验增量，人确认。
+- **补充证据**：某条判定证据偏弱（如只截了图没存原始输出）→ 建议"是否补抓/补充证据"。
+- **复用流程**：某条款的测试步骤本次验证稳定 → 建议"是否另存为模板/预设"。
+- **修正配置**：发现工具路径不对、健康检查失败、某参数可优化 → 建议修正。
+- **审核提示**：某条判定与历史同类设备结论差异大 → 建议人工重点复核。
+
+#### 3.7.2 触发与呈现
+
+- AI 在工具调用结束、阶段切换、会话完成等节点**异步评估**是否产生建议（不阻塞当前流程）。
+- 建议写入 `notifications` 表，前端顶部通知中心 + 铃铛未读角标；可点"接受/忽略/稍后"。
+- "接受"跳转到对应操作页（工具入库表单预填、skill 编译预览、补证据流程等），人确认才生效。
+- 建议要带**理由和依据**（"本次执行了 `xxx` 命令 2 次，输出稳定，适合沉淀为工具"），而不是空泛提示。
+- 可配置通知粒度（哪些类型提示、是否自动弹出 vs 仅角标）。
+- AI 不得因建议未被采纳而改变当前测试流程或判定。
+
+#### 3.7.3 与沉淀闭环的关系
+
+通知是 §3.6 知识沉淀闭环的**触发入口**：跑完案例后，AI 主动发起"要不要沉淀"，把"做过的东西"转成工具/skill/template 的过程从"人记得去做"变成"AI 提醒人做"，但最终入库始终经人审核。
+
 ---
 
 ## 4. 平台现状盘点
@@ -303,8 +339,9 @@ interface AiProvider {
 5. 新表 `agent_sessions`：`id, projectId, presetId(可选), phase, status, model, currentStepId, createdAt, updatedAt`；模型对话/工具调用事件可放 append-only `agent_events`（或复用审计日志）。
 6. 新表 `knowledge_notes`（经验笔记，人写）：`id, title, content(markdown), tags(json), attachments(json), author, createdAt, updatedAt`。
 7. 新表 `skills`（AI 编译后的结构化技能）：`id, title, frontmatter(json 标签/适用范围), body(markdown), sourceNoteIds(json), version, status('draft'|'approved'), author, createdAt, updatedAt`。
-8. `projects` 增加 `mode ('template'|'agent-guided')`。
-9. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
+8. 新表 `notifications`（AI 主动建议，非阻塞）：`id, type('tool_sediment'|'skill_sediment'|'evidence_gap'|'template_save'|'config_fix'|'review_hint'), title, message, reason, payload(json, 携带建议内容/预填数据), sessionId, status('unread'|'accepted'|'dismissed'|'snoozed'), createdBy('agent'), createdAt, actedAt`。
+9. `projects` 增加 `mode ('template'|'agent-guided')`。
+10. **落库强制校验**：非 adjudication 阶段不得写 verdict；verdict 必须带 clauseId。
 
 > Z6s 笔记里的截图、pcap、固件、nmap 输出，都走 evidences.fileRef/artifacts.fileRefs 存 `filesDir/evidence/`，functionModule 标签对应"网络/蓝牙/升级/聊天/定位"等模块，与判定阶段的条款检索对齐。
 
@@ -375,13 +412,14 @@ interface AiProvider {
 - 人工步骤：指令卡片、完成/上传、继续、打断
 - Artifact 与 Evidence 管理（functionModule 标签、文件落库、跨阶段引用）
 - **知识库最小闭环（§3.6）**：经验笔记 CRUD + 附件；"AI 编译成 skill"接口（note → 结构化 skill 草稿 → 人确认入库）；skill 标签/版本；Agent 规划时按设备型号/平台关键词检索 skill
+- **AI 主动建议通知（§3.7）**：notifications 表 + 通知中心；阶段/工具调用结束触发 AI 评估（沉淀工具/skill/补证据/另存模板等）；接受→跳对应预填表单，忽略/稍后；非阻塞
 - ClauseVerdict 审核流（pending/approve/reject + 按条款局部重跑 + 阶段回退）
 - 数据模型扩展 + 阶段边界校验
-- `/api/agent/*` 接口 + WebSocket 事件流
-- 前端：模块选择 → Agent 会话页（阶段时间线、指令卡片、工具输出、审核面板、工件视图）；知识库页面（写笔记、编译 skill、管理标签/版本）
+- `/api/agent/*` 接口 + WebSocket 事件流 + `/api/notifications`
+- 前端：模块选择 → Agent 会话页（阶段时间线、指令卡片、工具输出、审核面板、工件视图）；知识库页面（写笔记、编译 skill、管理标签/版本）；通知铃铛/通知中心
 - 报告：AI 叙述/整改建议（结构化字段代码算）；A/B 过程进附录
-- 单测：mock provider 测规划/工具桥/审核/阶段校验/降级/skill 编译
-- **范围控制**：一期只做"选条款 → 四阶段人机协同 → 审核 → 报告"主链路 + "笔记→skill→检索"知识闭环。验收目标是选**一个真实设备（用 Z6s 笔记作为首个 skill 样例）+ 一个条款族（如 GEC 网络外部接口）**，Agent 能根据该设备的 skill 动态给出 A/B 步骤、人工完成后跑 C 判定、出报告。不追求一次覆盖所有设备和条款。
+- 单测：mock provider 测规划/工具桥/审核/阶段校验/降级/skill 编译/通知生成
+- **范围控制**：一期只做"选条款 → 四阶段人机协同 → 审核 → 报告"主链路 + "笔记→skill→检索"知识闭环 + "AI 主动建议通知"基础版（先支持沉淀工具/skill 两类建议）。验收目标是选**一个真实设备（用 Z6s 笔记作为首个 skill 样例）+ 一个条款族（如 GEC 网络外部接口）**，Agent 能根据该设备的 skill 动态给出 A/B 步骤、人工完成后跑 C 判定、出报告，并在过程中主动给出可沉淀建议。不追求一次覆盖所有设备、条款、建议类型。
 
 ### P2：能力放开（1-2 个月）
 - **案例反哺**：跑完一个设备测试，AI 提炼有效做法/踩坑/人工修正为经验增量，人确认后追加进对应 skill
@@ -412,6 +450,7 @@ interface AiProvider {
 8. **"另存为模板"放 P2 是否认可**：固化流程是效率选项但非一期主线。
 9. **知识库录入方式**：一期是否认可"人写自由笔记 → AI 编译成 skill → 人确认入库"的闭环？skill 审核是 template_manager 还是任意 auditor？
 10. **案例反哺时机**：跑完一个设备后自动提炼经验增量（P2），还是一期就做手动"沉淀为经验"按钮？（建议一期做按钮、P2 做自动提炼）
+11. **AI 主动建议通知**：一期先支持哪几类建议（建议先做"沉淀工具""沉淀 skill"两类）？通知是否需要实时推送（WebSocket）还是轮询？
 
 ---
 
@@ -419,5 +458,6 @@ interface AiProvider {
 
 - v0.2 的"一键静态模板"对完整合规测试不够，Z6s 笔记已证伪；改为"Agent 引导的人机协同分阶段测试"。
 - 一期用平台自有 Agent 循环 + DeepSeek API 就够，**不急于绑 dsh rc**；确定性引擎管判定与定级，AI 管规划与成文，人工管硬件操作与审核。
+- 知识沉淀闭环：人写经验笔记，AI 编译成 skill，案例可反哺；AI 还能主动发非阻塞通知建议沉淀，不打断流程。
 - dsh 的价值（session log、preset/skill、子代理）放二期，以 SDK 子进程隔离接入，版本锁定 + 双写审计。
 - 建议按 P0→P1 推进，P1 以一个真实模块端到端跑通为验收门槛。
