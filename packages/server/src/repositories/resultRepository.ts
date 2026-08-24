@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import type { Evidence, ClauseVerdict } from '@en18031/shared';
+import type { Evidence, ClauseVerdict, VerdictReviewStatus } from '@en18031/shared';
 import { uuid, nowIso } from '@en18031/shared';
 import { parseJson, toJson } from './json.js';
 
@@ -14,6 +14,11 @@ export interface EvidenceRow {
   hash?: string;
   severity: Evidence['severity'];
   createdAt: string;
+  // Agent 扩展
+  clauseId?: string;
+  functionModule?: string;
+  sourceStepType?: string;
+  mimeType?: string;
 }
 
 export class ResultRepository {
@@ -23,8 +28,9 @@ export class ResultRepository {
     const row: EvidenceRow = { ...input, id: uuid(), createdAt: nowIso() };
     this.db
       .prepare(
-        `INSERT INTO evidences (id, stepRunId, projectRunId, projectId, type, content, fileRef, hash, severity, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO evidences (id, stepRunId, projectRunId, projectId, type, content, fileRef, hash, severity,
+           clauseId, functionModule, sourceStepType, mimeType, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         row.id,
@@ -36,6 +42,10 @@ export class ResultRepository {
         row.fileRef ?? null,
         row.hash ?? null,
         row.severity,
+        row.clauseId ?? null,
+        row.functionModule ?? null,
+        row.sourceStepType ?? null,
+        row.mimeType ?? null,
         row.createdAt,
       );
     return row;
@@ -80,14 +90,17 @@ export class ResultRepository {
     overridden?: boolean;
     overrideReason?: string;
     verdictGroup: string;
+    reviewStatus?: VerdictReviewStatus;
+    aiGenerated?: boolean;
   }): ClauseVerdict {
     const id = uuid();
     const now = nowIso();
+    const reviewStatus = input.reviewStatus ?? 'approved';
     this.db
       .prepare(
         `INSERT INTO clause_verdicts (id, stepRunId, projectRunId, projectId, clauseId, pass, severity, reason,
-          evidenceRefs, overridden, overrideReason, verdictGroup, createdAt)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          evidenceRefs, overridden, overrideReason, verdictGroup, reviewStatus, aiGenerated, createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         id,
@@ -102,6 +115,8 @@ export class ResultRepository {
         input.overridden ? 1 : 0,
         input.overrideReason ?? null,
         input.verdictGroup,
+        reviewStatus,
+        input.aiGenerated ? 1 : 0,
         now,
       );
     return {
@@ -118,7 +133,46 @@ export class ResultRepository {
       overrideReason: input.overrideReason,
       verdictGroup: input.verdictGroup,
       createdAt: now,
+      reviewStatus,
+      aiGenerated: input.aiGenerated ?? false,
     };
+  }
+
+  /** Only approved verdicts count toward compliance grading. */
+  listApprovedVerdictsByProject(projectId: string): ClauseVerdict[] {
+    return (this.db
+      .prepare("SELECT * FROM clause_verdicts WHERE projectId = ? AND reviewStatus = 'approved' ORDER BY rowid ASC")
+      .all(projectId) as Record<string, unknown>[]).map((r) => this.mapVerdict(r));
+  }
+
+  listApprovedVerdictsByRun(projectRunId: string): ClauseVerdict[] {
+    return (this.db
+      .prepare("SELECT * FROM clause_verdicts WHERE projectRunId = ? AND reviewStatus = 'approved' ORDER BY rowid ASC")
+      .all(projectRunId) as Record<string, unknown>[]).map((r) => this.mapVerdict(r));
+  }
+
+  listPendingReviewVerdictsByProject(projectId: string): ClauseVerdict[] {
+    return (this.db
+      .prepare("SELECT * FROM clause_verdicts WHERE projectId = ? AND reviewStatus = 'pending_review' ORDER BY rowid ASC")
+      .all(projectId) as Record<string, unknown>[]).map((r) => this.mapVerdict(r));
+  }
+
+  setReviewStatus(
+    verdictId: string,
+    reviewStatus: VerdictReviewStatus,
+    reviewedBy: string,
+    reviewNote?: string,
+  ): ClauseVerdict | null {
+    const now = nowIso();
+    this.db
+      .prepare(
+        'UPDATE clause_verdicts SET reviewStatus=?, reviewedBy=?, reviewedAt=?, reviewNote=? WHERE id=?',
+      )
+      .run(reviewStatus, reviewedBy, now, reviewNote ?? null, verdictId);
+    const row = this.db.prepare('SELECT * FROM clause_verdicts WHERE id=?').get(verdictId) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.mapVerdict(row) : null;
   }
 
   listVerdictsByProject(projectId: string): ClauseVerdict[] {
@@ -172,6 +226,11 @@ export class ResultRepository {
       overrideReason: r.overrideReason ? String(r.overrideReason) : undefined,
       verdictGroup: String(r.verdictGroup),
       createdAt: String(r.createdAt),
+      reviewStatus: r.reviewStatus ? (r.reviewStatus as ClauseVerdict['reviewStatus']) : 'approved',
+      reviewedBy: r.reviewedBy ? String(r.reviewedBy) : undefined,
+      reviewedAt: r.reviewedAt ? String(r.reviewedAt) : undefined,
+      reviewNote: r.reviewNote ? String(r.reviewNote) : undefined,
+      aiGenerated: r.aiGenerated ? Boolean(r.aiGenerated) : false,
     };
   }
 }

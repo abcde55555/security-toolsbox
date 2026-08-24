@@ -268,6 +268,51 @@ export class ProjectRepository {
     return this.getStepRun(id)!;
   }
 
+  /** Create a step_run owned by an agent session (human/tool/evidence/analysis step). */
+  createAgentStepRun(input: {
+    id?: string;
+    projectRunId: string;
+    stepId: string;
+    stepSnapshot: unknown;
+    stepType: NonNullable<StepRun['stepType']>;
+    phase: NonNullable<StepRun['phase']>;
+    agentSessionId: string;
+    functionModule?: string;
+    instruction?: string;
+    expectedOutcome?: string;
+    artifacts?: string[];
+  }): StepRun {
+    const id = input.id ?? uuid();
+    this.db
+      .prepare(
+        `INSERT INTO step_runs
+          (id, projectRunId, stepId, stepSnapshot, status, evidenceCount, verdictCount, percent,
+           stepType, phase, functionModule, instruction, expectedOutcome, artifacts, agentSessionId)
+         VALUES (?,?,?,?,'pending',0,0,0,?,?,?,?,?,?)`,
+      )
+      .run(
+        id,
+        input.projectRunId,
+        input.stepId,
+        toJson(input.stepSnapshot),
+        input.stepType,
+        input.phase,
+        input.functionModule ?? null,
+        input.instruction ?? null,
+        input.expectedOutcome ?? null,
+        toJson(input.artifacts ?? []),
+        input.agentSessionId,
+      );
+    return this.getStepRun(id)!;
+  }
+
+  listAgentStepRuns(agentSessionId: string): StepRun[] {
+    const rows = this.db
+      .prepare('SELECT * FROM step_runs WHERE agentSessionId = ? ORDER BY rowid ASC')
+      .all(agentSessionId) as Record<string, unknown>[];
+    return rows.map((r) => this.mapStepRun(r));
+  }
+
   getStepRun(id: string): StepRun | null {
     const row = this.db.prepare('SELECT * FROM step_runs WHERE id = ?').get(id) as
       | Record<string, unknown>
@@ -338,6 +383,13 @@ export class ProjectRepository {
       evidenceCount: Number(r.evidenceCount),
       verdictCount: Number(r.verdictCount),
       percent: Number(r.percent),
+      stepType: r.stepType ? (r.stepType as StepRun['stepType']) : undefined,
+      phase: r.phase ? (r.phase as StepRun['phase']) : undefined,
+      functionModule: r.functionModule ? String(r.functionModule) : undefined,
+      instruction: r.instruction ? String(r.instruction) : undefined,
+      expectedOutcome: r.expectedOutcome ? String(r.expectedOutcome) : undefined,
+      artifacts: r.artifacts ? parseJson<string[]>(r.artifacts, []) : undefined,
+      agentSessionId: r.agentSessionId ? String(r.agentSessionId) : undefined,
     };
   }
 
@@ -348,7 +400,7 @@ export class ProjectRepository {
     this.db
       .prepare(
         `UPDATE step_runs SET status=?, startedAt=?, finishedAt=?, exitCode=?, stdoutFileRef=?, stderrFileRef=?,
-          durationMs=?, error=?, evidenceCount=?, verdictCount=?, percent=? WHERE id=?`,
+          durationMs=?, error=?, evidenceCount=?, verdictCount=?, percent=?, artifacts=? WHERE id=?`,
       )
       .run(
         merged.status,
@@ -362,6 +414,7 @@ export class ProjectRepository {
         merged.evidenceCount,
         merged.verdictCount,
         merged.percent,
+        toJson(merged.artifacts ?? []),
         id,
       );
   }

@@ -25,9 +25,13 @@ export class ReportService {
       project.standardVersion,
       project.targetComplianceLevel,
     );
+    // Only human-approved verdicts count toward the compliance grade. Agent
+    // drafts remain pending_review and are excluded until approved; legacy
+    // template-mode verdicts default to reviewStatus='approved', so behaviour
+    // is unchanged for existing data.
     const verdicts = runId
-      ? this.ctx.repos.results.listVerdictsByRun(runId)
-      : this.ctx.repos.results.listVerdictsByProject(projectId);
+      ? this.ctx.repos.results.listApprovedVerdictsByRun(runId)
+      : this.ctx.repos.results.listApprovedVerdictsByProject(projectId);
 
     // A report needs actual results. If nothing has run, refuse to generate
     // an "all not covered" report that looks meaningful but isn't.
@@ -143,7 +147,7 @@ export class ReportService {
       project.standardVersion,
       project.targetComplianceLevel,
     );
-    const verdicts = this.ctx.repos.results.listVerdictsByProject(projectId);
+    const verdicts = this.ctx.repos.results.listApprovedVerdictsByProject(projectId);
     const evidences = this.ctx.repos.results.listEvidenceByRun(
       this.ctx.repos.projects.latestRun(projectId)?.id ?? '',
     );

@@ -11,6 +11,7 @@ import { OrchestratorService } from './orchestratorService.js';
 import { ClauseMappingService } from './clauseMappingService.js';
 import { ReportService, setReportService } from './reportService.js';
 import { CommandRunnerService } from './commandRunnerService.js';
+import { AgentService } from '../agent/agentService.js';
 import type { ServiceContext } from './context.js';
 import type { Repositories } from '../repositories/index.js';
 
@@ -24,6 +25,7 @@ export interface Services {
   clauses: ClauseMappingService;
   reports: ReportService;
   commandRunner: CommandRunnerService;
+  agent: AgentService;
   engine: ExecutionEngine;
   moduleLoader: ModuleLoader;
   bus: EventEmitter;
@@ -54,6 +56,7 @@ export function getServices(): Services {
   setReportService(reports);
   const orchestrator = new OrchestratorService(ctx);
   const commandRunner = new CommandRunnerService(ctx);
+  const agent = new AgentService(repos, engine, moduleLoader, bus);
 
   services = {
     repos,
@@ -65,6 +68,7 @@ export function getServices(): Services {
     clauses,
     reports,
     commandRunner,
+    agent,
     engine,
     moduleLoader,
     bus,

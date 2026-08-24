@@ -22,6 +22,22 @@ export interface AppConfig {
   webDistDir: string;
   allowedHosts: string[];
   uploadMaxBytes: number;
+  ai: AiConfig;
+}
+
+export interface AiConfig {
+  enabled: boolean;
+  provider: 'deepseek' | 'scripted';
+  baseUrl: string;
+  apiKey: string;
+  planningModel: string;
+  narrativeModel: string;
+  timeoutMs: number;
+  maxRetries: number;
+  /** Per-tool-call / step timeout for human steps (ms). */
+  humanStepTimeoutMs: number;
+  /** Hard cap on planner iterations per session to prevent runaway loops. */
+  maxIterations: number;
 }
 
 function env(name: string, fallback?: string): string {
@@ -68,6 +84,18 @@ export const config: AppConfig = {
     .map((h) => h.trim())
     .filter(Boolean),
   uploadMaxBytes: envInt('UPLOAD_MAX_BYTES', 200 * 1024 * 1024),
+  ai: {
+    enabled: envBool('AI_ENABLED', false),
+    provider: (env('AI_PROVIDER', 'deepseek') as 'deepseek' | 'scripted') === 'scripted' ? 'scripted' : 'deepseek',
+    baseUrl: env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+    apiKey: env('DEEPSEEK_API_KEY', ''),
+    planningModel: env('AI_PLANNING_MODEL', 'deepseek-chat'),
+    narrativeModel: env('AI_NARRATIVE_MODEL', 'deepseek-chat'),
+    timeoutMs: envInt('AI_TIMEOUT_MS', 60_000),
+    maxRetries: envInt('AI_MAX_RETRIES', 2),
+    humanStepTimeoutMs: envInt('AGENT_HUMAN_STEP_TIMEOUT_MS', 30 * 60 * 1000),
+    maxIterations: envInt('AGENT_MAX_ITERATIONS', 50),
+  },
 };
 
 for (const dir of [

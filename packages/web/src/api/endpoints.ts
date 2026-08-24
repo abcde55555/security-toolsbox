@@ -11,6 +11,11 @@ import type {
   Standard,
   Report,
   AuditLog,
+  AgentSession,
+  AgentEvent,
+  Artifact,
+  AgentPhase,
+  AgentSessionStatus,
 } from '@en18031/shared';
 
 export interface StepRunDetail extends StepRun {
@@ -364,6 +369,106 @@ export const AuditLogsApi = {
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
     const qs = q.toString();
     return requestPaged<AuditLog>('GET', `/audit-logs${qs ? `?${qs}` : ''}`);
+  },
+};
+
+// ===== Agent 人机协同 =====
+
+export interface CreateAgentSessionBody {
+  /** Optional existing project; if omitted backend creates an agent-guided project. */
+  projectId?: string;
+  standardVersion: string;
+  selectedClauses: string[];
+  deviceProfile: Record<string, unknown>;
+  authorizedTools?: string[];
+  planningModel?: string;
+  narrativeModel?: string;
+}
+
+/** Payload carried by the `agent:verdict_drafted` socket event / verdict list. */
+export interface VerdictDraft {
+  id: string;
+  stepRunId?: string;
+  clauseId: string;
+  pass: boolean;
+  severity: string;
+  reason: string;
+  evidenceRefs: string[];
+  reviewStatus: 'pending_review' | 'approved' | 'rejected' | 'skipped';
+  reviewNote?: string;
+  aiGenerated?: boolean;
+}
+
+/** Payload carried by the `agent:human_step_requested` socket event. */
+export interface HumanStepRequest {
+  stepRunId: string;
+  stepType?: string;
+  phase?: AgentPhase;
+  title?: string;
+  instruction: string;
+  expectedOutcome?: string;
+  referenceCommand?: string;
+  /** Whether the human must attach at least one evidence file to complete. */
+  evidenceRequired?: boolean;
+  functionModule?: string;
+  status?: string;
+}
+
+/** Payload for `agent:evidence_attached` — a minimal evidence view for the side panel. */
+export interface AgentEvidence {
+  id: string;
+  type: string;
+  content: string;
+  severity?: string;
+  fileRef?: string;
+  mimeType?: string;
+  functionModule?: string;
+  clauseId?: string | null;
+  stepRunId?: string;
+  createdAt: string;
+}
+
+export interface CompleteHumanStepBody {
+  outcome?: string;
+  fileRefs?: string[];
+  evidence?: Array<{ type: string; content: string; fileRef?: string; functionModule?: string; mimeType?: string }>;
+  status?: 'success' | 'fail' | 'blocked';
+}
+
+export const AgentApi = {
+  list: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
+    const qs = q.toString();
+    return requestPaged<AgentSession>(`GET`, `/agent/sessions${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => api.get<AgentSession>(`/agent/sessions/${id}`),
+  create: (body: CreateAgentSessionBody) => api.post<AgentSession>('/agent/sessions', body),
+  start: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/start`, {}),
+  abort: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/abort`, {}),
+  resume: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/resume`, {}),
+  advance: (id: string, body: { toPhase: AgentPhase; reason?: string }) =>
+    api.post<AgentSession>(`/agent/sessions/${id}/advance`, body),
+  rollback: (id: string, body: { toPhase: AgentPhase; reason?: string }) =>
+    api.post<AgentSession>(`/agent/sessions/${id}/rollback`, body),
+  events: (id: string, sinceSeq = 0) =>
+    api.get<AgentEvent[]>(`/agent/sessions/${id}/events?sinceSeq=${sinceSeq}`),
+  steps: (id: string) => api.get<StepRun[]>(`/agent/sessions/${id}/steps`),
+  artifacts: (id: string) => api.get<Artifact[]>(`/agent/sessions/${id}/artifacts`),
+  createArtifact: (id: string, body: Partial<Artifact>) =>
+    api.post<Artifact>(`/agent/sessions/${id}/artifacts`, body),
+  verdicts: (id: string) => api.get<VerdictDraft[]>(`/agent/sessions/${id}/verdicts`),
+  reviewVerdict: (id: string, verdictId: string, body: { action: 'approve' | 'reject' | 'request_evidence'; reason?: string }) =>
+    api.post<VerdictDraft>(`/agent/sessions/${id}/verdicts/${verdictId}/review`, body),
+  retryClause: (id: string, clauseId: string) =>
+    api.post<{ retriedStepRunIds: string[] }>(`/agent/sessions/${id}/clauses/${encodeURIComponent(clauseId)}/retry`, {}),
+  completeHumanStep: (id: string, stepRunId: string, body: CompleteHumanStepBody) =>
+    api.post<StepRun>(`/agent/sessions/${id}/human-steps/${stepRunId}/complete`, body),
+  sendMessage: (id: string, content: string) =>
+    api.post<AgentEvent>(`/agent/sessions/${id}/messages`, { content }),
+  updateStatus: (_id: string, _status: AgentSessionStatus) => {
+    // Placeholder retained for future use; not currently called.
+    return Promise.resolve(undefined);
   },
 };
 

@@ -499,8 +499,6 @@ const MIGRATIONS: {
     );
     CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(agentSessionId);
     CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(projectId);
-
-    CREATE INDEX IF NOT EXISTS idx_step_runs_agent_session ON step_runs(agentSessionId);
     `,
     run(database) {
       const tableExists = (table: string): boolean =>
@@ -535,23 +533,33 @@ const MIGRATIONS: {
       addCol('evidences', 'mimeType', 'TEXT');
       addCol('projects', 'mode', "TEXT NOT NULL DEFAULT 'template'");
       addCol('clauses', 'applicableParts', "TEXT NOT NULL DEFAULT '[]'");
+      // agentSessionId column is added above; create its index only if the table
+      // exists (some test harnesses run migrations in isolation without step_runs).
+      if (tableExists('step_runs')) {
+        database.exec(
+          'CREATE INDEX IF NOT EXISTS idx_step_runs_agent_session ON step_runs(agentSessionId)',
+        );
+      }
 
       // Phase-boundary guard: agent-session verdicts may only be created in adjudication.
       // Template-mode runs (step_runs with no agentSessionId) are allowed through.
-      database.exec(`
-        CREATE TRIGGER IF NOT EXISTS clause_verdicts_phase_guard
-        BEFORE INSERT ON clause_verdicts
-        WHEN EXISTS (
-          SELECT 1 FROM step_runs sr
-          WHERE sr.id = NEW.stepRunId AND sr.agentSessionId IS NOT NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM step_runs sr
-          JOIN agent_sessions s ON s.id = sr.agentSessionId
-          WHERE sr.id = NEW.stepRunId AND s.phase = 'adjudication'
-        )
-        BEGIN SELECT RAISE(ABORT, 'verdict allowed only in adjudication phase'); END;
-      `);
+      // Guarded by tableExists because some test harnesses run migrations in isolation.
+      if (tableExists('clause_verdicts') && tableExists('step_runs') && tableExists('agent_sessions')) {
+        database.exec(`
+          CREATE TRIGGER IF NOT EXISTS clause_verdicts_phase_guard
+          BEFORE INSERT ON clause_verdicts
+          WHEN EXISTS (
+            SELECT 1 FROM step_runs sr
+            WHERE sr.id = NEW.stepRunId AND sr.agentSessionId IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM step_runs sr
+            JOIN agent_sessions s ON s.id = sr.agentSessionId
+            WHERE sr.id = NEW.stepRunId AND s.phase = 'adjudication'
+          )
+          BEGIN SELECT RAISE(ABORT, 'verdict allowed only in adjudication phase'); END;
+        `);
+      }
     },
   },
 ];

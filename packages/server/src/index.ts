@@ -19,6 +19,7 @@ import { commandRunRoutes } from './routes/commandRuns.js';
 import { uploadRoutes } from './routes/upload.js';
 import { auditRoutes } from './routes/audit.js';
 import { standardRoutes } from './routes/standards.js';
+import { agentRoutes } from './routes/agent.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'unhandled promise rejection');
@@ -105,6 +106,7 @@ async function bootstrap(): Promise<void> {
   await app.register(uploadRoutes);
   await app.register(auditRoutes);
   await app.register(standardRoutes);
+  await app.register(agentRoutes);
 
   const services = await initServices();
   try {
@@ -123,13 +125,15 @@ async function bootstrap(): Promise<void> {
   io.on('connection', (socket) => {
     const queryRunId = (socket.handshake.query as { runId?: string }).runId;
     if (queryRunId) socket.join(`run:${queryRunId}`);
-    socket.on('subscribe', (payload: { runId?: string } | undefined) => {
-      const runId = payload?.runId;
-      if (runId) socket.join(`run:${runId}`);
+    const querySessionId = (socket.handshake.query as { sessionId?: string }).sessionId;
+    if (querySessionId) socket.join(`agent:${querySessionId}`);
+    socket.on('subscribe', (payload: { runId?: string; sessionId?: string } | undefined) => {
+      if (payload?.runId) socket.join(`run:${payload.runId}`);
+      if (payload?.sessionId) socket.join(`agent:${payload.sessionId}`);
     });
-    socket.on('unsubscribe', (payload: { runId?: string } | undefined) => {
-      const runId = payload?.runId;
-      if (runId) socket.leave(`run:${runId}`);
+    socket.on('unsubscribe', (payload: { runId?: string; sessionId?: string } | undefined) => {
+      if (payload?.runId) socket.leave(`run:${payload.runId}`);
+      if (payload?.sessionId) socket.leave(`agent:${payload.sessionId}`);
     });
   });
 
@@ -143,6 +147,22 @@ async function bootstrap(): Promise<void> {
   services.bus.on('tool:health', (payload: Record<string, unknown>) => {
     io.emit('tool:health', payload);
   });
+
+  // Forward all agent:* bus events to the agent:${sessionId} room. Each payload
+  // carries sessionId. Clients join via ?sessionId= or the subscribe socket event.
+  const AGENT_EVENTS = [
+    'agent:session', 'agent:phase', 'agent:step_started', 'agent:tool_call',
+    'agent:tool_output', 'agent:tool_result', 'agent:human_step_requested',
+    'agent:human_step_completed', 'agent:evidence_attached', 'agent:artifact_written',
+    'agent:verdict_drafted', 'agent:verdict_updated', 'agent:message',
+    'agent:waiting_confirm', 'agent:progress', 'agent:error', 'agent:done',
+  ] as const;
+  for (const event of AGENT_EVENTS) {
+    services.bus.on(event, (payload: { sessionId?: string }) => {
+      if (payload?.sessionId) io.to(`agent:${payload.sessionId}`).emit(event, payload);
+      else io.emit(event, payload);
+    });
+  }
 
   if (fs.existsSync(config.webDistDir)) {
     await app.register(fastifyStatic, {
