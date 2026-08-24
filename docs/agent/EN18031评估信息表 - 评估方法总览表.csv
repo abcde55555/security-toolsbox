@@ -1,0 +1,537 @@
+﻿,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,机制,适用标准（EN18031）,技术要求项目,requirement技术要求,项目需被测试的条件,评估对象,概念评估,功能完整性评估,功能充分性评估,涉及的工具,,,,,,,,,,
+,当前表格中的测试方法部分依赖其他外部文档模板及表格。如接口识别及资产识别需要到《XXX设备-评估文档》中完成。,,,,,,,,,,,,,,,,,,,
+,"ACM
+访问控制机制",-1、-2、-3,"[ACM-1]Applicability of access control mechanisms
+访问控制机制的适用性","The equipment shall use access control mechanisms to manage entities' access to security assets and network/(privacy)/(financial) assets, except for access to security assets or network/(privacy)/(financial) assets where:
+1.public accessibilityis the equipment's intended functionality; or
+2.physical or logical measures in the equipment's targeted operational environment limit their accessibility to authorized entities; or
+3.legal implications do not allow for access control mechanisms.
+设备应使用访问控制机制来管理实体对安全资产和网络资产/隐私资产/金融资产的访问，但在以下情况下对安全资产或网络资产/隐私资产/金融资产的访问除外：
+—	可公开访问是设备的预期功能；或者
+—	设备目标操作环境中的物理或逻辑措施限制了它们对授权实体的可及性；要么
+—	法律层面不允许访问控制机制",无/设备存在资产,可被实体访问的的安全资产和网络资产/隐私资产/金融资产,"1、根据《接口与资产识别表》中的ACM归类在P-CAP中创建评估项。
+2、在系统上填写。
+其中：
+对于一些常见分类，经验上会做以下判决。
+WIFI：如果是客户端，一般不列为访问方式。但如果作为AP则需要写。
+蓝牙：客户端情况同上，但如果作为服务端与外部设备配对，则需要写。
+蜂窝：同上。
+
+当有些资产在功能评估上不好测试时概念评估可以尽量将访问方式判定为豁免。
+常见豁免项如：UI，物理访问方式，客户端通信",1、参照《XXX设备-评估文档》中的资产识别描述及截图。,1、参照《XXX设备-评估文档》, ,,,,,,,,,,
+,,-1、-2、-3,"[ACM-2] Appropriate access control mechanisms
+适当的访问控制机制","Access control mechanisms that are required per ACM-1 shall ensure that only authorized entities have access to the protected security assets and network/(privacy)/(financial) assets.
+每个ACM-1所需的访问控制机制应确保只有授权实体才能访问受保护的安全资产和网络资产/隐私资产/金融资产。",设备存在访问控制机制,ACM-1要求所需的每个访问控制机制,,无,,,,,,,,,,,,
+,,-2,"[ACM-3] Default access control for children in toys
+玩具中对儿童的默认访问控制","Access control mechanisms that are required per ACM-1 shall ensure that only authorized entities have
+access to the protected security assets and privacy assets.
+若该设备为玩具，对于儿童可以访问外部内容的每项隐私功能，且儿童的访问由ACM-1要求的访问控制机制进行管理，则该访问控制机制应默认确保儿童通过该隐私功能对外部内容的访问仅限于来自授权实体的内容。",设备是玩具且存在儿童可访问外部内容的隐私功能,儿童可访问外部内容的每个隐私功能,,验证所有儿童可访问外部内容的隐私功能是否记录在[E.Info.ACM-3.PrivacyAsset]中,,,,,,,,,,,,
+,,-2,"[ACM-4] Default access control to children's privacy assets for toys and childcare equipment
+玩具与儿童看护设备中对儿童隐私资产的默认访问控制","If the equipment is a toy or childcare equipment, any children's privacy function and personal information access control mechanisms required per ACM-1 shall by default restrict, apart from the child's or their parental/guardians, any third-party access to the children's privacy function and personal information processed by the equipment, except for authorised accesses which are required for the equipment's intended functionality.
+若设备为玩具或儿童看护设备，除儿童本人及其父母/监护人外，ACM应默认限制第三方访问儿童隐私功能与个人信息，除非该访问为预期功能所需的授权访问。",设备是玩具或儿童看护设备，且处理儿童隐私功能/个人信息,"【EN18031-2】
+children's privacy function and personal information ACM
+儿童隐私功能与个人信息的ACM",,"1、列出设备上所有可被儿童或其父母/监护人以外的第三方访问的儿童隐私功能及设备上的个人信息——可通过检查软件的所有部分来实现，例如：核查网络浏览器设置、检查应用商店访问权限、查看已安装的应用程序、调查内置或已安装的家长控制功能；
+(通过客户端识别个人信息、bp插件HAE匹配个人信息)
+2、将步骤1所列清单与[E. Info.ACM-4. PrivacyAsset]中提供的清单进行比对，并标出任何在设备上已识别/发现但未列入[E. Info.ACM-4. PrivacyAsset]的隐私功能或个人信息。",验证默认情况下，第三方（非儿童/父母）对儿童隐私资产的访问是否被限制在设备运行必要的范围内。,,,,,,,,,,,
+,,-2,"[ACM-5] Parental/Guardian access controls for children in toys
+玩具中家长/监护人对儿童的访问控制","If the equipment is a toy, for each security asset and privacy asset that is accessible by children, and where children's access is managed by access control mechanisms required per ACM-1, the access control mechanisms shall be configurable by an authorized entity to restrict children's access to the managed security assets and privacy assets.
+若设备为玩具，对儿童可访问的每项由ACM-1管理的安全/隐私资产，ACM应支持由授权实体配置以限制儿童访问。",设备是玩具且存在儿童可访问的、由ACM-1管理的安全/隐私资产,"【EN18031-2】
+each ACM managing children's access
+管理儿童访问的每个ACM",,无,,,,,,,,,,,,
+,,-2,"[ACM-6] Parental/Guardian access controls for other entities' access to managed children's privacy assets in toys
+玩具中家长/监护人对其他实体访问儿童隐私资产的控制","If the equipment is a toy, for each children's privacy asset that is accessible by entities, other than the children or their parents or guardians, and where those other entities' access is managed by access control mechanisms required per ACM-1, the access control mechanisms shall be configurable by an authorized entity to restrict the other entities' access to the managed children's privacy assets.
+若设备为玩具，对除儿童及其父母/监护人以外的其他实体可访问的儿童隐私资产（由ACM-1管理），ACM应支持由授权实体配置以限制这些其他实体的访问。",设备是玩具且存在儿童以外实体可访问的儿童隐私资产,"【EN18031-2】
+each ACM managing other entities' access to children's privacy assets",,无,,,,,,,,,,,,
+,"AUM
+身份认证机制",-1、-2、-3,"[AUM-1]Applicability of authentication mechanisms
+[AUM-1-2]Network interface
+认证机制的适用性（网络接口）","【EN18031-1】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing entities access via network interfaces that allow to:
+read confidential network function configuration or confidential security parameters; or
+modify sensitive network function configuration or sensitive security parameters; or
+-use network functions or security functions,
+except for access:
+to network functions or network function configuration where the absence of authenticationis required for the equipment's intended functionality; or via networks where physical or logical measures in the equipment's targeted operationalenvironment limit accessibility to authorised entities.
+每个ACM-1所需的访问控制机制应使用认证机制来管理实体通过网络接口的访问，以允许：
+— 读取机密网络功能配置或机密安全参数；或
+—  修改敏感网络功能配置或敏感安全参数；或
+—  使用网络功能或安全功能，
+除了：
+—  缺少对使用网络功能或读写网络功能配置的身份认证是设备预期功能所必需的；或
+—  在设备预期操作环境中的物理或逻辑措施限制了授权实体的访问性的情况下，通过网络接口对资产进行的访问
+【EN18031-2】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing
+entities' access via network interfaces that allow to:
+— read confidential personal information, confidential privacy function configuration or
+confidential security parameters; or
+— modify sensitive personal information, sensitive privacy function configuration or sensitive
+security parameters; or
+— use privacy functions or security functions,
+except for access:
+— to personal information, privacy functions o r privacy function configuration where the
+absence of authentication is required for the intended equipment functionality; or
+— via networks where physical o r logical measures in the equipment's targeted operational
+environment limit accessibility to authorised entities.
+根据ACM-1的要求，访问控制机制应运用认证机制来管理实体通过网络接口的访问，从而能够：
+— 读取机密个人信息、机密隐私功能配置或机密安全参数；或者
+— 修改敏感的个人信息、敏感的隐私功能配置或敏感的安全参数；或者
+— 使用隐私功能或安全功能
+除访问外：
+— 对于个人信息和隐私功能或隐私功能配置，在预期的设备功能实现过程中无需进行身份验证；或者
+— 通过物理或逻辑措施在设备目标运行环境中限制了授权实体访问权限的网络。
+【EN18031-3】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing
+entities’ access via network interfaces that allow to:
+— read confidential financial data, confidential financial function configuration or confidential
+security parameters; or
+— modify sensitive financial data, sensitive financial function configuration or sensitive security
+parameters; or
+— use financial functions or security functions.
+根据ACM-1的要求，访问控制机制应运用认证机制来管理实体通过网络接口的访问，从而能够：
+— 读取机密的金融数据、机密的金融功能配置或机密的安全参数；或者
+— 修改敏感的金融数据、敏感的金融功能配置或敏感的安全参数；或者
+— 使用金融功能或安全功能。",设备通过网络接口提供对资产的访问,"允许访问资产的每个网络接口
+",注：EN18031-3是没有豁免方式。,验证所有可访问安全资产/网络资产/隐私资产/金融资产的网络接口是否记录在[E.Info.AUM-1-1],,,,,,,,,,,,
+,,-1,"[AUM-1]Applicability of authentication mechanisms
+[AUM-1-2] user interface
+认证机制的适用性(用户接口)","【EN18031-1】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managingAccessentities'access via user interfaces that allow to:
+read confidential network function configuration or confidential security parameters; ormodify sensitive network function configuration or sensitive security parameters; or
+use network functions or security functions
+except for access:
+where physical or logical measures in the equipment's targeted operational environmentlimit accessibility to authorized entities;
+and except for read only access to network functions or network functions configuration where accesswithout authentication is needed:
+to enable the intended equipment functionality; or
+because legal implications do not allow for authentication mechanisms.
+每个ACM-1所需的访问控制机制应使用认证机制来管理实体通过用户接口的访问，以允许：
+—	读取机密网络功能配置或机密安全参数；或
+—	修改敏感网络功能配置或敏感安全参数；或
+—	使用网络功能或安全功能，
+除了：
+—	在设备预期操作环境中的物理或逻辑措施限制了授权实体的可访问性的情况下，通过用户接口对资产进行访问
+—	在以下情况下，只读访问网络或网络功能配置可不进行身份认证：
+	用于启用预期的设备功能所必需；或
+	因为法律意义上不允许使用身份认证机制
+【EN18031-2】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing
+entities' access via user interfaces that allow to:
+— read confidential personal information, confidential privacy function configuration or
+confidential security parameters; or
+— modify sensitive personal information, sensitive privacy function configuration or sensitive
+security parameters; or
+— use privacy functions or security functions,
+except for access:
+— where physical or logical measures in the equipment's targeted operational environment
+limit accessibility to authorized entities;
+and except for read only access to personal information, privacy functions or privacy function
+configuration where access without authentication is needed:
+— to enable the intended equipment functionality or
+— because legal implications do not allow for authentication mechanisms
+【EN18031-3】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing
+entities' access via user interfaces that allow to:
+- read confidential financial information, confidential financial
+function configuration or confidential security parameters; or
+- modify sensitive financial information, sensitive financial
+function configuration or sensitive security parameters; or
+- use financial functions or security functions
+每个ACM-1所需的访问控制机制应使用认证机制来管理实体通过用户接口的访问，以允许：
+- 读取机密的财务信息、机密的财务功能配置或机密的安全参数；或
+- 修改敏感的财务信息、敏感的财务功能配置或敏感的安全参数；或
+- 使用财务功能或安全功能。",设备存在ACM机制；且存在通过用户接口访问资产的ACM机制,ACM-1要求所需的那些通过用户接口进行资产访问的每个访问控制机制,注：EN18031-3是没有豁免方式。,以确定设备上是否存在通过用户接口访问资产的访问控制机制未在[E.Info.AUM-1-1. ACM]中描述,,,,,,,,,,,,
+,,-3,"[AUM-1-3] Applicability of authentication mechanisms for machine interfaces
+身份认证机制适用性(机器接口)","【EN18031-3】
+Access control mechanisms required per ACM-1 shall use authentication mechanisms for managing
+entities' access via machine interfaces that allow to:
+- read confidential financial information, confidential financial function configuration or confidential security parameters; or
+- modify sensitive financial information, sensitive financial function configuration or sensitive security parameters; or
+- use financial functions or security functions
+每个ACM-1所需的访问控制机制应使用认证机制来管理实体通过用户接口的访问，以允许：
+- 读取机密的财务信息、机密的财务功能配置或机密的安全参数；  
+- 修改敏感的财务信息、敏感的财务功能配置或敏感的安全参数；  
+- 使用财务功能或安全功能。",设备存在提供访问安全资产/金融资产的机器接口,提供访问安全资产/金融资产的每个机器接口,注：EN18031-3是没有豁免方式。,验证所有此类机器接口是否记录在[E.Info.AUM-1-3]中,,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-2(-1)]Appropriate authentication mechanisms
+适当的认证机制（单因子认证）","Authentication mechanisms that are required per AUM-1-1 (network interface)or AUM-1-2 (userinterface) or AUM-1-3(EN18031-3) (machineinterface) shall verify an entity's claim based on examining evidence from at least one element of thecategories knowledge, possession and inherence (one factor authentication).
+AUM-1-1(网络接口)或AUM-1-2(用户接口)或AUM-1-3(EN18031-3)(机器接口)所要求的身份认证机制，应基于对知识、持有和固有特征中的至少一种要素（单因素认证）所提供的证据进行检查，来验证实体的身份声明。",设备存在通过网络接口或用户接口或机器接口(EN18031-3)访问资产的AUM机制,[AUM-1-1]和[AUM-1-2]和(AUM-1-3)要求所需的每个身份认证机制,,无,,,,,,,,,,,,
+,,-2、-3,"[AUM-2-2] Appropriate authentication mechanisms (Two factor authentication)
+适当的认证机制（双因子认证）","【EN18031-2】
+对于每个由访问控制机制保护的安全和隐私资产，应通过用户接口实施身份认证机制，以管理实体的访问权限。
+已实施的身份认证机制用于访问安全和隐私资产，包括：
+- 读取机密个人信息、机密隐私功能配置或机密安全参数； 
+- 修改敏感个人信息、敏感隐私功能配置或敏感安全参数； 
+- 执行隐私功能或安全功能。 
+身份认证机制应通过知识（Knowledge）、持有（Possession）或固有特征（Inherence）类别中的认证因子对实体身份进行验证。当访问受保护资产需要身份认证时，所实施的认证机制应确保仅授权实体能够访问或修改相应的安全和隐私资产。
+以下情况可作为例外：
+- 设备目标运行环境中的物理措施或逻辑措施已经限制了访问权限，仅允许授权实体进行访问；或 
+- 为实现设备预期功能，或由于法律要求，对个人信息、隐私功能或隐私功能配置提供无需身份认证的只读访问。
+
+【EN18031-3】
+针对AUM-1-1（网络接口）或AUM-1-2（用户接口）中要求且用于通过网络接口上的用户界面访问金融功能的每种认证机制，该等网络接口用于：
+- 转账
+- 处理货币资产或
+- 处理虚拟货币。
+身份认证机制应通过知识（Knowledge）、持有（Possession）或固有特征（Inherence）类别中的认证因子对实体身份进行验证。当访问受保护资产需要身份认证时，所实施的认证机制应确保仅授权实体能够访问或修改相应的安全和隐私资产。",设备主预期功能是处理特殊类别个人信息或代表用户发起或授权货币转账,"【EN18031-2】
+each access to personal information of special categories via user interfaces over network interface
+通过网络接口上用户接口对特殊类别个人信息的每次访问
+
+【EN18031-3】
+each authentication mechanism protecting monetary transfers
+保护货币转账的每个身份认证机制",,验证所有对特殊类别个人信息的访问路径是否记录在[E.Info.AUM-2-2]中,,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-3]Authenticator validation
+认证器验证","Authentication mechanisms that are required per AUM-1-1 (network interface)or AUM-1-2 (userinterface) or (AUM-1-3(machineinterface)) shall validate all relevant properties of the used authenticators, dependent on the availableinformation in the operational environment of use.
+对于每个AUM-1-1(网络接口)或AUM-1-2(用户接口)或AUM-1-3(机器接口)所需的身份认证机制，应依托使用的操作环境中的可用信息认证其所使用的认证器的所有相关属性。",设备存在AUM-1所需的身份认证机制,[AUM-1-1]或[AUM-1-2]或[AUM-1-3](EN18031-3)要求所需的每个身份认证机制中的认证器,,无,,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-4]Changing authenticators
+更改身份认证器","Authentication mechanisms that are required per AUM-1-1 or AUM-1-2 or AUM-1-3 shall allow for changing theauthenticator except for authenticators where conflicting security goals do not allow for a change.
+除非更改认证器与安全目标相冲突从而不允许认证器改变，否则每个AUM-1-1或AUM-1-2所需的认证机制都应被允许更改认证器。",设备存在AUM-1所需的身份认证机制,[AUM-1-1]或[AUM-1-2]或[AUM-1-3](EN18031-3)要求所需的每个身份认证机制中的认证器,,"无
+",,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-5]Password strength
+[AUM-5-1] Password strength (Factory default passwords)
+口令强度（出厂默认口令）","If factory default passwords are used by an authentication mechanism that is required per AUM-1-1 orAUM-1-2, they shall:
+-be unique per equipment; and
+-follow best practice concerning strength;
+or
+-be enforced to be changed by the user before or on first use.
+如果按照 AUM-1-1 或 AUM-1-2 要求的身份认证机制使用出厂默认口令，则口令应：
+—	对每台设备都是唯一的；且
+—	遵循有关口令强度的最佳实践；
+或
+—	在用户首次使用前或首次使用时强制更改口令。",设备的AUM认证机制使用出厂默认口令,[AUM-1-1]或[AUM-1-2]或[AUM-1-3](EN18031-3)要求所需的每个身份认证机制中的认证器,,无,,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-5-2] Password strength (Non-factory default passwords)
+口令强度（非出厂默认口令）","If passwords other than factory default passwords are used by an authentication mechanism required:
+-be enforced to be set by the user before or on first use and before the equipment is logically connected to a network; or
+-be defined by an authorized entity within a network where access is limited to authorise dentities; or
+-be generated by the equipment using best practice concerning strength and only communicated to an authorized entity within a network where access is limited to authorise dentities.
+如果AUM-1-1或AUM-1-2所需的身份认证机制使用了出厂默认口令以外的口令，则口令应：
+—	在用户在首次使用之前或首次使用时，以及在设备逻辑连接到网络之前强制用户设置；或
+—	由网络内的授权实体定义，且该网络仅限于授权实体访问；或
+—	由设备使用有关口令强度的最佳实践生成，并且口令仅传达给网络内的授权实体，且该网络仅限于授权实体访问。",设备的AUM认证机制使用非出厂默认口令,,,验证所有非出厂默认口令是否记录在[E.Info.AUM-5-2]中,,,,,,,,,,,,
+,,-1、-2、-3,"[AUM-6]Brute force protection
+暴力破解保护","Authentication mechanisms required per AUM-1-1 or AUM-1-2 shall be resilient against brute force attacks.
+AUM-1-1或AUM-1-2或AUM-1-3要求所需的每个身份认证机制应具有抵御暴力破解的能力。",设备存在AUM-1所需的认证机制,设备存在AUM-1所需的认证机制,,"无
+",,,,,,,,,,,,
+,"SUM
+安全更新机制",-1、-2、-3,"[SUM-1]Applicability of update mechanisms
+更新机制的适用性","The equipment shall provide at least one update mechanism for updating software, including firmware affecting security assets and/or network assets, except for software:
+-where functional safety implications do not allow updatability; or
+-which is immutable; or
+-where alternative measures protect the affected security assets and/or network assets duringthe entire lifecycle of the equipment.
+设备应至少提供一种更新机制，用于更新影响安全资产和/或网络资产的软件（包括固件）。影响安全资产和/或网络资产的软件中的以下软件除外：
+—	由于功能安全影响，不允许可更新的软件；
+—	不可变的软件；
+—	在整个设备生命周期内，具有替代措施来保护受影响安全资产和/或网络资产的软件。",无/设备存在软件,每个影响资产的软件部分，可以通过固件、系统应用、业务应用等进行软件部分划分，每部分进行评估,,无,,,,,,,,,,,,
+,,-1、-2、-3,"[SUM-2]Secure updates
+安全更新","Each update mechanism as required per SUM-1 shall only install software whose integrity and
+authenticity are yalid at the time of the installation.
+根据SUM-1 要求，每个更新机制只能安装在安装时完整性和真实性有效的软件。",设备存在软件更新机制,"For each update mechanism for updating software that affects security or network assets (including firmware)
+[SUM-1]要求所需的每个软件更新机制",,无,,,,,,,,,,,,
+,,-1、-2、-3,"[SUM-3]Automated updates
+自动更新","Each update mechanism that is required per SUM-1 shall be capable ofupdating the software:without human intervention at the equipment; or
+via scheduling the installation of an update under human approval; or
+via triggering the installation of an update under human approval or supervision where thereis the need to prevent any unexpected damage in the operational environment.
+按照SUM-1要求的每个更新机制都应能够更新软件，且符合以下任意情形：
+—	无需人工在设备上进行干预；或
+—	在获得人工批准的情况下，按计划定时更新；或
+—	在需要防止对运行环境造成任何意外损害的情况下，在人工批准或监督下触发更新。",设备存在软件更新机制,[SUM-1]要求所需的每个软件更新机制,,无,,,,,,,,,,,,
+,"SSM
+安全存储机制",-1、-2、-3,"[SSM-1]Applicability of secure storage mechanisms
+安全存储机制的适用性","The equipment shall always use secure storage mechanisms for protecting the security assets and network assets persistently stored on the equipment, except for persistently stored security assets or network assets where:
+- the physical or logical measures in the target environment ensures the security asset or network asset stored on the equipment accessibility is limited to authorized entities.
+设备应使用安全存储机制来保护设备上持久存储的安全资产和网络资产，但在以下情形中持久存储的安全资产或网络资产除外：
+—	目标环境中的物理或逻辑措施确保存储在设备上的安全资产或网络资产仅限授权实体可访问。",设备存在持久存储在设备上的资产,"each persistent storage of the network assetor security asset on the equipment
+持久存储在设备上的资产的各类存储方式",,验证所有持久存储在设备上的安全资产和网络资产都已被记录在[E.Info.SSM-1.SecurityAsset]或[E.Info.SSM-1.NetworkAsset]中,,,,,,,,,,,,
+,,-1、-2、-3,"[SSM-2] Appropriate integrity protection for secure storage mechanisms
+安全存储机制的适当完整性保护","Each secure storage mechanism that is required per SSM-1 shall protect the integrity of security assets and network assets it stores persistently.
+根据 SSM-1 要求的每一个安全存储机制，都应当保护其所持久存储的安全资产和网络资产的完整性。",设备存在安全存储机制,"each secure storage mechanism
+[SSM-1]要求所需的安全存储机制",,无,,,,,,,,,,,,
+,,-1、-2、-3,"[SSM-3] Appropriate confidentiality protection for secure storage mechanisms
+安全存储机制的适当机密性保护","Each secure storage mechanism that is required per SSM-1 shall protect the secrecysecurity parameter and confidential network function configuration it stores persistently.
+根据 SSM-1 要求的每个安全存储机制，都应当保护其所持久存储的机密安全参数和机密网络功能配置的机密性。",设备存在安全存储机制，且存在持久存储的机密资产,"each secure storage mechanism and each stored confidential security parameter and confidential network function configuration
+[SSM-1]要求所需的安全存储机制和持久存储的机密资产",,验证持久存储的所有机密性安全参数和机密性网络功能配置都已被记录在[E.Info.SSM-3.SSM.Asset],,,,,,,,,,,,
+,"SCM
+安全通信机制",-1、-2、-3,"[SCM-1]Applicability of secure communication mechanisms
+安全通信机制的适用性","【EN18031-1】
+The equipment shall always use secure communication mechanisms for communicating security assetsand network assets with other entities via network interfaces, except for:
+- communicating security assets or network assets whose transfer is protected by physical orogical measures in the targeted environment that ensure that network assets or securityassets are not exposed to unauthorised entities, or
+- communicating security assets or network assets whose exposure is part of establishing ormanaging a connection combined with additional measures to authenticate the connection or trust relation
+设备通过网络接口与其他实体通信安全资产和网络资产时，应始终使用安全通信机制。以下情况除外：
+—	通信的安全资产或网络资产，其传输已通过目标环境中的物理或逻辑措施得到保护，从而确保网络资产或安全资产不会暴露给未经授权的实体；或
+—	通信的安全资产或网络资产，其暴露是建立或管理连接过程的一部分，并且结合了用于对连接或信任关系进行认证的附加措施。
+【EN18031-2】
+The equipment shall always use secure communication mechanisms for communicating security assets
+and privacy assets with other entities via network interfaces, except for: 
+— communicating security assets or privacy assets whose transfer is protected by physical or logical measures in the targeted environment that ensure that security assets or privacy assets are not exposed to unauthorised entities; or 
+— communicating security assets whose exposure is part of establishing or managing a connection or trust
+relation.
+设备应始终采用安全的通信机制，通过网络接口与其他实体进行安全资产及隐私资产的通信，但以下情况除外：
+- 通信涉及的安全资产或隐私资产，其传输已在目标环境中通过物理或逻辑措施得到保护，从而确保这些安全资产或隐私资产不会暴露给未经授权的实体；或
+- 通信涉及的安全资产，其暴露过程是建立或管理连接的一部分，并结合了额外的措施以对连接或信任关系进行身份验证。
+【EN18031-3】
+The equipment shall always use secure communication mechanisms for communicating security assets 
+and financial assets with other entities via network interfaces.
+设备应始终采用安全通信机制，通过网络接口将安全资产与金融资产与其他实体进行通信。",设备存在在网络接口上传输的资产,"each network assets or security assets via network interface to communicate
+资产通过网络接口的每次传输",1、EN18031-3无豁免方式。,验证所有被网络接口传输的安全和网络资产都已被记录在[E.Info.SCM-1.SecurityAsset]和[E.Info.SCM-1.NetworkAsset],,,,,,,,,,,,
+,,-1、-2、-3,"[SCM-2] Appropriate integrity and authenticity protection for secure communicationmechanisms
+安全通信机制的适当完整性和真实性保护","Each secure communication mechanism that is required per SCM-1 shall apply best practices to protect the integrity and authenticity of the security assets and network assets communicated, except for communicating security assets or network assets where:
+-a deviation from best practice for integrity or authenticity protection is required for interoperability reasons.    
+根据SCM-1要求而使用的每个安全通信机制，都应采用最佳实践来保护所通信的安全资产和网络资产的完整性和真实性，但以下情况除外：
+—	出于互操作性原因，必须偏离完整性或真实性保护的最佳实践来进行安全资产或网络资产的通信。",设备存在安全通信机制,"each secure communication mechanism
+SCM-1要求所需的安全通信机制",1、EN18031-3无豁免方式。,无,,,,,,,,,,,,
+,,-1、-2、-3,"[SCM-3] Appropriate confidentiality protection for secure communication mechanisms
+安全通信机制的适当机密性保护","Each secure communication mechanism that is required per SCM-1 shall apply best practices to protectthe confidentiality of communicated network assets and security assets where confidentiality protectionof those is needed, except for communicating security assets or network assets where:
+-a deviation from best practice for protecting confidentiality is required for interoperabilityreasons.
+根据 SCM-1 要求使用的每种安全通信机制，在需要对所通信的网络资产和安全资产提供机密性保护时，应采用最佳实践来保护其机密性，以下情况除外：
+—	出于互操作性原因， 必须偏离用于机密性保护的最佳实践。",设备存在安全通信机制，且传输的资产有机密资产,"For each communication of security assets or network assets where confidentiality protection is needed
+SCM-1要求所需的安全通信机制",1、EN18031-3无豁免方式。,无,,,,,,,,,,,,
+,,-1、-2、-3,"[SCM-4]Appropriate replay protection for secure communication mechanisms
+安全通信机制的适当重放保护","Each secure communication mechanism that is required per SCM-1 shall apply best practices to protectthe security assets and the network assets communicated against replay attacks,except forcommunicating security assets or network assets where:
+-a duplicate transfer does not impose a threat of a replay attack; or
+-a deviation from best practice for replay protection is required for interoperability reasons.
+按照SCM-1要求的每一种安全通信机制，均应采用最佳实践来保护所传输的安全资产和网络免受重放攻击，以下情况除外：
+—	重复传输不会构成重放攻击威胁；或
+—	出于互操作性的原因，必须偏离重放防护的最佳实践。",,SCM-1要求所需的安全通信机制,1、EN18031-3对于—	出于互操作性的原因，必须偏离重放防护的最佳实践不进行豁免。,无,,,,,,,,,,,,
+,"RLM
+弹性机制",-1,"[RLM.1] Applicability and appropriateness of resilience mechanisms
+弹性机制的适用性和适当性","【EN18031-1】
+The equipment shall use resilience mechanisms to mitigate the effects of Denial of Service (DoS) Attacks on the network interfaces and return to a defined state after the attack except for:
+- network interfaces that are only used in a local network that do not interoperate with othernetworks; or
+- network interfaces where other devices in the network provide sufficient protection against DoS attacks and loss of essential functions for network operations.
+设备应使用弹性机制来减轻拒绝服务(DoS)攻击对网络接口的影响，并在攻击后能恢复到预定义的状态，但以下情况除外：
+—	仅用于本地且不与其他网络互通的网络接口；或者
+—	网络接口所在网络中的其他设备已针对DoS攻击和网络运行基本功能丧失提供了充分保护。",无/设备存在网络接口,"each  network interfaces 
+每个网络接口",,"从功能上评估是否存在未在 [E.Info.RLM-1.Networklnterface] 中列出的网络接口。
+从功能上评估是否实施了[E.lnfo.RLM-1.RLM]中未记录的弹性机制。",,,,,,,,,,,,
+,"NMM
+网络监控机制",-1,"[NMM-1]Applicability and appropriateness of network monitoring mechanisms
+网络监控机制的适用性和适当性","If the equipment is a network equipment, the equipment shall provide network monitoring mechanism(s) to detect for indicators of DoS attacks in the network traffic between networks which it processes.
+如果设备是网络设备，则该设备应提供一种或多种网络监控机制，用于监控其处理的网络之间的网络流量中的DoS攻击指标。",设备是网络设备，但若不是仍然需要决策树评估为不适用,"each network monitoring mechanism of the network equipment 
+设备上的网络监控机制",,无,,,,,,,,,,,,
+,"TCM
+流量控制机制",-1,"[TCM-1]Applicability of and appropriate traffic control mechanisms
+流量控制机制的适用性和适当性","If the equipment is a network equipment, the equipment shall provide network traffic control mechanism(s).
+如果该设备是网络设备，则该设备应当提供网络流量控制机制。",设备是网络设备，但若不是仍然需要决策树评估为不适用,"each network traffic control mechanism of the network equipment 
+设备上的流量控制机制",,无,,,,,,,,,,,,
+,"CCK
+机密秘钥",-1、-2、-3,"[CCK-1]Appropriate CCKs
+适当的机密密钥","Confidential cryptographic keys that are preinstalled or generated by the equipment during its use, shall support a minimum security strength of 112-bits, except for:
+-CCKs that are solely used by a specific security mechanism, where a deviation is identified and justified under the terms of sections ACM or AUM or SCM or SUM or SSM.
+设备在使用过程中预置或生成的机密密钥应支持不低于 112 位的最小安全强度，但以下情况除外：
+—	仅由某一特定安全机制使用的机密密钥（CCK），且其偏离已依据 ACM、AUM、SCM、SUM 或 SSM 章节的条款进行了识别和论证。",设备在使用过程中存在预置或生成的机密密钥,"the strength of  each confidential cryptographic key (preinstalled or generated during usage)
+CCK 安全强度",,验证由设备预置或在设备使用过程中生成，但未记录在 [E.Info.CCK-1.CCK] 中的机密密钥,,,,,,,,,,,,
+,,-1、-2、-3,"[CCK-2]CCK generation mechanisms
+CCK生成机制","The generation of confidential cryptographic keys shall adhere to best practice cryptography, except for:the generation of CCKs for a specific security mechanism, where a deviation is identified andjustified under the terms of sections ACM or AUM or SCM or SUM or SSM.
+机密密钥（CCK）的生成应遵循密码学最佳实践，但以下情况除外：
+—	针对某一特定安全机制生成 CCK，且已根据 ACM、AUM、SCM、SUM 或 SSM 章节的条款识别并论证了偏离的合理性。",设备在使用过程中存在预置或生成的机密密钥,"each generation mechanism of confidential cryptographic keys on the equipment
+每个CCK的生成机制",,"【EN18031-1】
+评估设备上所有机密密钥的生成机制是否记录在[E.Info.CCK-2.Generation]中。
+
+【EN18031-2】
+验证所有CCK生成机制是否记录在[E.Info.CCK-2]中
+
+【EN18031-3】
+验证所有CCK生成机制是否记录在[E.Info.CCK-2]中",,,,,,,,,,,,
+,,-1、-2、-3,"[CCK-3]Preventing static default values for preinstalled CCKs
+防止为预置 CCK 使用静态默认值","Preinstalled confidential cryptographic keys shall be practically unique per equipment, except for:
+-CCKs that are only used for establishing initial trust relationships under conditions controlledby an authorized entity; or
+-CCKS key are shared parameters required for the equipment's intended functionality
+预置的机密密钥机密密码密钥（CCK）应当在实践中做到每台设备唯一，以下情况除外每个设备预装的机密加密密钥实际上应是唯的，但以下情况除外：
+—	CCKC仅用于在由授权实体控制的条件下建立初始信任关系的 CCK；CKsCCKs仅用于在授权实体控制的条件下建立初始信任关系；或者
+—	 CCK作为设备实现其预期功能所必需的共享参数的 CCKCCKSCCKS 密钥是设备预期功能所需的共享参数。",设备在使用过程中存在预置的机密密钥,"Preinstalled confidential cryptographic keys
+每个预制的机密密钥",,"【EN18031-1】
+功能评估是否所有预置的 CCK 均已被记录在文档中。
+
+【EN18031-2】
+验证所有预装的CCK是否记录在[E.Info.CCK-3]中
+
+【EN18031-3】
+验证所有预装的CCK是否记录在[E.Info.CCK-3]中",,,,,,,,,,,,
+,"GEC
+通用设备能力",-1、-2、-3,"[GEC-1] Up-to-date software and hardware with no publicly known exploitable vulnerabilities
+确保软件和硬件保持最新，且不存在任何公开已知可利用的漏洞","The equipment shall not include publicly known exploitable vulnerabilities that, if exploited, affectsecurity assets and network assets, except for vulnerabilities:
+-that cannot be exploited in the specific conditions of the equipment; or
+-that have been mitigated to an acceptable residual risk; or
+-that have been accepted on a risk basis.
+设备不得包含公开已知的、一旦被利用会影响安全资产和网络资产的可利用漏洞，以下漏洞除外：
+—	在设备的特定条件下无法被利用的漏洞；或
+—	已降低至可接受的残余风险的漏洞；或
+—	基于风险评估而被接受的漏洞。",无,"each software and hardware on the equipment in factory default state
+出厂默认状态下，设备上的软件和硬件清单",,"【EN18031-1】
+设备中存在的、影响安全资产或网络资产的漏洞仅限于 [E.Info.GEC-1.ListOfVulnerabilities] 中列出的漏洞。
+
+【EN18031-2】
+验证所有相关公开已知漏洞是否记录在[E.Info.GEC-1.ListOfVulnerabilities]中
+
+【EN18031-3】
+验证所有相关公开已知漏洞是否记录在[E.Info.GEC-1.ListOfVulnerabilities]中",,,,,,,,,,,,
+,,-1、-2、-3,"[GEC-2] Limit exposure of services via related network interfaces
+限制通过相关网络接口暴露服务","In factory default state the equipment shall only expose
+-network interfaces; and
+-services via networkinterfaces
+-affecting security assets or network assets which are necessary for equipment setup or for basic operation of the equipment.
+在出厂默认状态下，设备应仅暴露影响安全资产或网络资产，且对于设备设置或基本操作是必要的以下：
+—	网络接口；以及
+—	通过网络接口提供的服务。",无/设备存在网络接口,"each network interface and exposed service (via network interfaces) in factory default state
+出厂默认状态下，每个暴露的网络接口和网络接口上的服务",,"【EN18031-1】
+评估是否存在其他在出厂默认状态下暴露的网络接口或服务（通过网络接口暴露），这些接口或服务未在 [E.Info.GEC-2.NetworkInterface.Exposure] 中列出，或者根据 [E.Info.GEC-2.Setup] 进行设置或基本操作时不需要
+
+【EN18031-2】
+验证所有出厂默认暴露的网络接口/服务是否记录在[E.Info.GEC-2]中
+
+【EN18031-3】
+验证所有出厂默认暴露的网络接口/服务是否记录在[E.Info.GEC-2]中",,,,,,,,,,,,
+,,-1、-2、-3,"[GEC-3] Configuration of optional services and the related exposed network interfaces
+配置可选服务和相关暴露网络接口","Optional network interfaces or optional services exposed via network interfaces affecting security assetsor network assets, which are part of the factory default state shall have the option for an authorized userto enable and disable the networkinterface or service.
+在出厂默认状态下，通过网络接口暴露的、且影响安全资产或网络资产的可选网络接口或可选服务，必须提供允许授权用户启用和禁用该网络接口或服务的选项。",存在网络接口且存在可选的接口或服务,"each optional network interface andexposed optional service (via network interfaces)that is part of the factory default state
+出厂默认状态下，每个可选的网络接口和暴露的可选服务
+",,"【EN18031-1】
+功能性评估是否存在未在 [E.Info.GEC 3.NetworkInterface.Exposure] 中列出的可选网络接口，或通过网络接口暴露的可选服务
+
+【EN18031-2】
+验证所有可选网络接口/服务是否记录在[E.Info.GEC-3]中
+
+【EN18031-3】
+验证所有可选网络接口/服务是否记录在[E.Info.GEC-3]中",,,,,,,,,,,,
+,,-1、-2、-3,"[GEC-4] Documentation of exposed network interfaces and exposed services via networkinterfaces
+暴露的网络接口和（通过网络接口）暴露的服务的用户文档","The equipment's user documentation shall contain a description of all exposed network interfaces; and
+all services exposed via network interfaces
+which are delivered as part of the factory default state.
+设备的用户文档作为出厂默认状态的一部分被交付，其应包含以下内容：
+—	暴露的所有网络接口的描述；以及
+—	通过网络接口暴露的所有服务的描述。",,"each network interface and service exposed via network interfaces
+出厂默认状态下每个暴露的网络接口和服务",,"【EN18031-1】
+确定用户文档是否描述了所有作为出厂默认状态一部分交付的网络接口和服务（通过网络接口暴露）。
+
+【EN18031-2】
+验证用户文档是否覆盖所有出厂默认暴露的网络接口/服务
+
+【EN18031-3】
+验证用户文档是否覆盖所有出厂默认暴露的网络接口/服务",,,,,,,,,,,,
+,,-1、-2、-3,"[GEC-5] No unnecessary external interfaces
+无不必要的物理外部接口","The equipment shall only expose physical external interfaces if they are necessary for its intended
+functionality.
+设备只应暴露其预期功能所必需的物理外部接口。",无,"【EN18031-1】
+each physical external interface exposed by the equipment
+设备暴露的每个物理外部接口",,"【EN18031-1】
+尝试发现任何通过设备暴露的物理外部接口，即使相关接口功能未启用或未记录在 [E.Info.GEC-5.PhysicalExternalInterface]
+
+【EN18031-2】
+验证所有物理外部接口是否记录在[E.Info.GEC-5]中
+
+【EN18031-3】
+验证所有物理外部接口是否记录在[E.Info.GEC-5]中",,,,,,,,,,,,
+,,-1、-2、-3,"[GEC-6] input validation
+输入验证","The equipment shall validate input received via external interfaces if the input has potential impact onsecurity assets and/or network assets.
+如果外部接口接收到的输入对安全资产和/或网络资产/或隐私资产/或金融资产具有潜在影响，则设备必须验证该输入。",无,"【EN18031-1】
+each  external interface which has capable of receiving input
+对于每个外部接口接收且可能影响资产的每类输入
+",,"【EN18031-1】
+检查中发现的所有外部接口的输入方式均已记录在 [E.Info.GEC-6.ExternalInterface]
+
+【EN18031-2】
+验证所有可能影响安全/隐私资产的输入是否记录在[E.Info.GEC-6]中
+
+【EN18031-3】
+验证输入验证机制是否记录在[E.Info.GEC-6]中",,,,,,,,,,,,
+,,-2、-3,"【EN18031-2】
+[GEC-7] Documentation of external sensing capabilities
+外部感知能力的文档
+
+【EN18031-3】
+[GEC-7] This clause is intentionally left blank
+本条款有意留空","【EN18031-2】
+All external sensing capabilities of the equipment that are related to the user's or subscriber's privacy shall be documented for the user.
+设备所有与用户或订户隐私相关的外部感知能力应向用户提供文档说明。
+
+【EN18031-3】
+This clause is intentionally left blank.
+本条款有意留空。","【EN18031-2】
+设备存在与隐私相关的外部感知能力
+
+【EN18031-3】
+不适用","【EN18031-2】
+each external sensing capability related to user's or subscriber's privacy
+每个与用户或订户隐私相关的外部感知能力
+
+【EN18031-3】
+不适用",,"【EN18031-2】
+验证所有与隐私相关的外部感知能力是否记录在[E.Info.GEC-7]中
+
+【EN18031-3】
+无",,,,,,,,,,,,
+,,-3,"[GEC-8] Equipment Integrity
+设备完整性","【EN18031-3】
+Equipment, which processes financial data, shall cryptographically verify the boot process integrity and authenticity of its software (provided by the manufacturer or its sub-contractor), using a root of trust which is immutable or, mutable under cryptographically authenticated authorization, for each part of its software which processes financial assets and security assets.
+处理金融数据的设备应使用不可变的信任根，或在经过密码学认证授权下可变的信任根，对其（由制造商或其分包商提供的）软件的启动过程完整性和真实性进行密码学验证，涵盖处理金融资产和安全资产的每一部分软件。","【EN18031-3】
+设备处理金融数据","each part of software processing financial assets and security assets and its root of trust
+处理金融资产和安全资产的每一部分软件及其信任根",,"【EN18031-3】
+验证启动完整性/真实性方案与信任根是否记录在[E.Info.GEC-8]中",,,,,,,,,,,,
+,"CRY
+密码学",-1、-2、-3,"[CRY-1] Best practice cryptography
+最佳密码学实践","The equipment shall use best practice for cryptography that is used for the protection of the securityassets or network assets, except for:
+-cryptography used for a specific security mechanism, where a deviation is identified andjustified under the terms of sections ACM or AUM or SCM or SUM or SSM.
+设备应使用密码学最佳实践来保护安全资产或网络资产，但以下情况除外：
+—	用于特定安全机制的密码学，且已经根据 ACM、AUM、SCM、SUM 或 SSM 章节的条款识别并论证了偏离最佳实践的合理性。",设备存在密码机制,"each cryptography used to protect security assets or network or privacy or fianancial assets
+每个用于保护安全/网络资产/隐私资产/金融资产的密码学机制",,"【EN18031-1】
+对[E.Info.CRY-1.Assets.Cryptography] 记录的密码机制完整性进行功能评估
+
+【EN18031-2】
+验证所有用于保护安全/隐私资产的密码学机制是否记录在[E.Info.CRY-1]中
+
+【EN18031-3】
+验证所有密码学机制是否记录在[E.Info.CRY-1]中",,,,,,,,,,,,
+,"LGM
+日志机制",-2、-3,"[LGM-1] Applicability of logging mechanisms
+日志机制的适用性","The equipment shall use logging mechanisms for internal activities that are relevant to privacy/financial assets and their protection (referred to as events), except for internal activities where a legal obligation prohibits logging.
+设备应对与隐私资产/或金融资产及其保护相关的内部活动（称为事件）使用日志机制，除非法律义务禁止记录。",设备存在与隐私资产及其保护相关的内部活动,"each event relevant to privacy/financial assets and their protection
+与隐私资产及其保护相关的每个事件",,"【EN18031-2】
+验证所有与隐私资产相关的事件是否记录在[E.Info.LGM-1.Event]中
+
+【EN18031-3】
+验证所有此类事件是否记录在[E.Info.LGM-1]中",,,,,,,,,,,,
+,,-2、-3,"[LGM-2] Persistent storage of log data
+日志数据的持久存储","Logging mechanisms that are required per LGM-1 shall store log data for related events in the equipment's persistent storage, except for events where related log data is stored outside the equipment.
+LGM-1所需的日志机制应将相关事件的日志数据存储在设备的持久存储中，除非相关日志数据存储在设备外部。",设备存在LGM-1所需的日志机制,"each logging mechanism required per LGM-1
+LGM-1所需的每个日志机制",,"【EN18031-2】
+无
+
+【EN18031-3】
+验证日志持久化存储配置是否记录在[E.Info.LGM-2]中",,,,,,,,,,,,
+,,-2、-3,"[LGM-3] Minimum number of persistently stored events
+持久存储事件的最少数量","All log data stored in equipment's persistent storage by logging mechanisms that are required per LGM-1 shall always include a minimum number of the latest events; and the latest event.
+LGM-1所需的日志机制存入设备持久存储的所有日志数据应始终包含最新事件以及最近事件的最少数量。",设备存在LGM-1所需的日志机制且事件被持久存储,"log data persistently stored by logging mechanisms required per LGM-1
+LGM-1所需的日志机制持久存储的日志数据",,"【EN18031-2】
+无
+
+【EN18031-3】
+验证日志保留策略是否记录在[E.Info.LGM-3]中",,,,,,,,,,,,
+,,-2、-3,"[LGM-4] Time-related information of persistently stored log data
+持久存储日志的时间相关信息","All log data stored in equipment's persistent storage by logging mechanisms that are required per LGM-1 shall include:
+- a timestamp if real time is available on the equipment; and
+- time-related information if real time is not available on the equipment.
+LGM-1所需的日志机制持久存储的所有日志数据应在设备有
+- 实时时钟时包含时间戳
+- 在无实时时钟时包含时间相关信息",设备存在LGM-1所需的日志机制且事件被持久存储,"log data persistently stored by logging mechanisms required per LGM-1
+LGM-1所需的日志机制持久存储的日志数据",,"【EN18031-2】
+无
+
+【EN18031-3】
+验证日志时间信息是否记录在[E.Info.LGM-4]中",,,,,,,,,,,,
+,"DLM
+删除机制",-2,"[DLM-1] Applicability of deletion mechanisms
+删除机制的适用性","【EN18031-2】
+The equipment shall provide a deletion mechanism that allows a user to delete their personal data and sensitive security parameters stored on the equipment.
+设备应提供一种删除机制，允许用户删除存储在设备上的其个人数据和敏感安全参数。",设备存储了用户个人数据或敏感安全参数,"each deletion mechanism for user's personal data and sensitive security parameters
+用于删除用户个人数据与敏感安全参数的每个删除机制",,"【EN18031-2】
+验证所有存储在设备上的用户个人数据和敏感安全参数是否记录在[E.Info.DLM-1]中",,,,,,,,,,,,
+,"UNM
+用户通知机制",-2,"[UNM-1] Applicability of user notification mechanisms
+用户通知机制的适用性","The equipment shall provide user notification mechanism(s) for informing the user of the equipment about changes affecting the protection or privacy of personal information, except for changes where other methods of informing the user exist, which do not involve the equipment.
+设备应提供用户通知机制，将影响个人信息保护或隐私的变更告知设备用户，除非存在不涉及设备的其他告知方式。",设备存在可能影响个人信息保护或隐私的变更,"each change affecting the protection or privacy of personal information
+影响个人信息保护或隐私的每个变更",,"【EN18031-2】
+验证所有影响个人信息保护/隐私的变更是否记录在[E.Info.UNM-1]中",,,,,,,,,,,,
+,,-2,"[UNM-2] Appropriate user notification content
+适当的用户通知内容","The content of a notification provided by a user notification mechanism that is required per UNM-1 shall include at least: a description of a change; and a description of how a change will affect the protection and privacy of personal information.
+UNM-1所需的用户通知机制提供的通知内容至少应包括：变更的描述；以及该变更如何影响个人信息保护与隐私的描述。",设备存在UNM-1所需的用户通知机制,"each user notification mechanism required per UNM-1
+UNM-1所需的每个用户通知机制",,"【EN18031-2】
+无",,,,,,,,,,,,
