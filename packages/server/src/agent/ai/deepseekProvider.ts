@@ -574,6 +574,9 @@ export class DeepSeekProvider implements AiProvider {
       Authorization: `Bearer ${this.opts.apiKey}`,
     };
     if (this.protocol === 'anthropic') {
+      // Anthropic-native and Anthropic-compatible gateways (Volcengine ARK
+      // Coding Plan, etc.) accept either x-api-key or Bearer; send both.
+      h['x-api-key'] = this.opts.apiKey;
       h['anthropic-version'] = '2023-06-01';
       h['anthropic-beta'] = 'tools-2024-04-04';
     }
