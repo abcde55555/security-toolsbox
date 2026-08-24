@@ -1,11 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Spin, Empty, Card, Row, Col, Typography, Tag, Space, Button, Table,
+  Spin, Empty, Card, Row, Col, Typography, Tag, Space, Button, Table, message,
 } from 'antd';
-import { FileExcelOutlined, FileTextOutlined, FilePdfOutlined, CodeOutlined } from '@ant-design/icons';
+import { FileExcelOutlined, FileTextOutlined, FilePdfOutlined, CodeOutlined, RobotOutlined } from '@ant-design/icons';
 import type { Report, ClauseNode } from '@en18031/shared';
 import type { ReportDetail } from '../../api/endpoints';
 import { ReportsApi } from '../../api/endpoints';
+import { useRunStream } from '../../hooks/useRunStream';
 import {
   gradeColor, gradeText, severityColor, severityText,
 } from '../../utils/ui';
@@ -146,6 +147,11 @@ export default function ReportTab({
         </Card>
       ) : null}
 
+      {/* AI 叙述报告：narrativeModel 异步生成，经 report:narrative 事件或轮询到达 */}
+      {report.projectRunId !== undefined || report.narrative ? (
+        <NarrativeSection projectId={projectId} report={report} />
+      ) : null}
+
       {/* 层级条款明细：章节父项汇总子项判定 */}
       <Card size="small" title="条款判定明细（按章节层级）">
         <Table
@@ -199,5 +205,109 @@ export default function ReportTab({
         )}
       </Card>
     </Space>
+  );
+}
+
+/**
+ * AI 叙述报告区：narrativeModel 在服务端异步成文。
+ * 到达路径优先级：report:narrative 实时事件（挂在报告所属 run 房间）
+ * > 触发后轮询 latest 兜底 > 直接展示已落库的 narrative。
+ */
+function NarrativeSection({ projectId, report }: { projectId: string; report: Report }) {
+  const [narrative, setNarrative] = useState<string | null>(report.narrative ?? null);
+  const [generating, setGenerating] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollLeft = useRef(0);
+
+  useEffect(() => {
+    setNarrative(report.narrative ?? null);
+  }, [report.id, report.narrative]);
+
+  const stopPolling = () => {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  };
+
+  useEffect(() => stopPolling, []);
+
+  useRunStream(report.projectRunId, {
+    onNarrative: (p) => {
+      if (p.reportId !== report.id) return;
+      pollLeft.current = 0;
+      stopPolling();
+      setGenerating(false);
+      setNarrative(p.narrative);
+      message.success('AI 叙述报告已生成');
+    },
+  });
+
+  const generate = async () => {
+    try {
+      await ReportsApi.regenerateNarrative(projectId, report.id);
+      setGenerating(true);
+      // Polling fallback in case the socket room is not joined (e.g. report
+      // viewed without an active run subscription).
+      pollLeft.current = 15;
+      stopPolling();
+      pollTimer.current = setInterval(async () => {
+        if (pollLeft.current-- <= 0) {
+          stopPolling();
+          setGenerating(false);
+          message.warning('叙述生成尚未完成，可稍后刷新查看');
+          return;
+        }
+        try {
+          const r = await ReportsApi.latest(projectId);
+          if (r?.id === report.id && r.narrative) {
+            stopPolling();
+            setGenerating(false);
+            setNarrative(r.narrative);
+            message.success('AI 叙述报告已生成');
+          }
+        } catch {
+          // transient transport error: keep polling
+        }
+      }, 3000);
+    } catch (e) {
+      setGenerating(false);
+      message.error((e as Error).message);
+    }
+  };
+
+  return (
+    <Card
+      size="small"
+      title={
+        <span>
+          <RobotOutlined style={{ marginRight: 6, color: '#7c3aed' }} />
+          AI 叙述报告
+          <Tag style={{ marginLeft: 8 }} color="purple">
+            narrativeModel
+          </Tag>
+        </span>
+      }
+      extra={
+        <Button size="small" loading={generating} onClick={() => void generate()}>
+          {narrative ? '重新生成' : '生成 AI 叙述'}
+        </Button>
+      }
+    >
+      {narrative ? (
+        <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+          {narrative}
+        </Typography.Paragraph>
+      ) : (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            generating
+              ? '正在用成文模型撰写结论/风险/整改建议…'
+              : '尚未生成叙述。点击右上角按钮，由成文模型基于统计数据与失败清单撰写。'
+          }
+        />
+      )}
+    </Card>
   );
 }

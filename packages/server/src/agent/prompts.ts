@@ -1,4 +1,4 @@
-import type { AgentPhase, AgentSession, Clause } from '@en18031/shared';
+import type { AgentPhase, AgentSession, Clause, Skill } from '@en18031/shared';
 
 const PHASE_GUIDE: Record<AgentPhase, string> = {
   onboarding:
@@ -15,12 +15,23 @@ export function buildSystemPrompt(input: {
   session: AgentSession;
   clauses: Clause[];
   authorizedTools: string[];
+  /** Approved/current skills injected so past experience steers new sessions. */
+  skills?: Skill[];
 }): string {
   const { session, clauses, authorizedTools } = input;
   const clauseList = clauses
     .map((c) => `- ${c.clauseId} [${c.level}/${c.defaultSeverity}] ${c.title}`)
     .join('\n');
   const device = JSON.stringify(session.deviceProfile, null, 2);
+  const skillList = (input.skills ?? [])
+    .slice(0, 8)
+    .map((s) => {
+      const whenToUse =
+        typeof s.frontmatter?.whenToUse === 'string' ? s.frontmatter.whenToUse : '';
+      const bodyHead = s.body.replace(/\s+/g, ' ').slice(0, 200);
+      return `- ${s.skillKey}（${s.title}）：${whenToUse || bodyHead}`;
+    })
+    .join('\n');
   return [
     '你是 EN18031 合规测试平台的测试编排助手，与一名安全工程师协同完成物联网设备合规评估。',
     '',
@@ -43,6 +54,11 @@ export function buildSystemPrompt(input: {
     '可用模组：',
     authorizedTools.length > 0 ? authorizedTools.map((t) => `- ${t}`).join('\n') : '（未授权模组）',
     '',
+    skillList
+      ? `历史经验技能（可用 search_skills 查看全文；与本设备相关的应优先参考）：\n${skillList}`
+      : '历史经验技能：（技能库暂为空，可用 search_skills 确认）',
+    '',
     '请用中文回复。优先用工具推进任务，必要时用简短文本向工程师说明下一步意图。',
+    '当本次会话沉淀出可复用的测试经验时（review 阶段尤其适合），用 propose_skill 以非阻塞通知提议沉淀。',
   ].join('\n');
 }

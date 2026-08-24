@@ -12,6 +12,9 @@ import { CategoryRepository } from './categoryRepository.js';
 import { AgentRepository } from './agentRepository.js';
 import { ArtifactRepository } from './artifactRepository.js';
 import { SettingRepository } from './settingRepository.js';
+import { KnowledgeRepository } from './knowledgeRepository.js';
+import { SkillRepository } from './skillRepository.js';
+import { NotificationRepository } from './notificationRepository.js';
 
 export interface Repositories {
   audit: AuditRepository;
@@ -27,6 +30,9 @@ export interface Repositories {
   agent: AgentRepository;
   artifacts: ArtifactRepository;
   settings: SettingRepository;
+  knowledge: KnowledgeRepository;
+  skills: SkillRepository;
+  notifications: NotificationRepository;
 }
 
 let repos: Repositories | null = null;
@@ -48,6 +54,9 @@ export function getRepositories(): Repositories {
     agent: new AgentRepository(db),
     artifacts: new ArtifactRepository(db),
     settings: new SettingRepository(db),
+    knowledge: new KnowledgeRepository(db),
+    skills: new SkillRepository(db),
+    notifications: new NotificationRepository(db),
   };
   return repos;
 }
@@ -68,6 +77,9 @@ export function createInMemoryRepositories(): { repos: Repositories; close: () =
     agent: new AgentRepository(db),
     artifacts: new ArtifactRepository(db),
     settings: new SettingRepository(db),
+    knowledge: new KnowledgeRepository(db),
+    skills: new SkillRepository(db),
+    notifications: new NotificationRepository(db),
   };
   return { repos: r, close: () => db.close() };
 }

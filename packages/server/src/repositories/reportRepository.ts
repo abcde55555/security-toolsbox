@@ -75,6 +75,14 @@ export class ReportRepository {
     return row ? this.mapReport(row) : null;
   }
 
+  /** Persist the AI narrative after async generation completes. */
+  setNarrative(id: string, narrative: string): Report | null {
+    const res = this.db
+      .prepare('UPDATE reports SET narrative = ? WHERE id = ?')
+      .run(narrative, id);
+    return res.changes > 0 ? this.getById(id) : null;
+  }
+
   private mapReport(r: Record<string, unknown>): Report {
     return {
       id: String(r.id),
@@ -93,6 +101,7 @@ export class ReportRepository {
         byChapter: {},
         failBySeverity: { high: 0, middle: 0, low: 0 },
       }),
+      narrative: r.narrative ? String(r.narrative) : undefined,
       generatedBy: String(r.generatedBy),
       generatedAt: String(r.generatedAt),
       isLatest: Boolean(r.isLatest),

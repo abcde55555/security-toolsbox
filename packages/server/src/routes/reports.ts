@@ -32,6 +32,37 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * On-demand AI narrative (re)generation for an existing report.
+   * Returns 202 immediately; the narrative arrives via the
+   * 'report:narrative' socket event or a later GET.
+   */
+  app.post(
+    '/api/projects/:id/reports/:reportId/narrative',
+    { preHandler: requireRole('auditor') },
+    async (req, reply) => {
+      try {
+        const { id, reportId } = req.params as { id: string; reportId: string };
+        const services = getServices();
+        const report = services.repos.reports.getById(reportId);
+        if (!report || report.projectId !== id) {
+          throw Object.assign(new Error(`报告 '${reportId}' 不存在`), { code: 9004, httpStatus: 404 });
+        }
+        void services.reports
+          .generateNarrative(reportId, id, report.projectRunId, {
+            grade: report.grade,
+            summary: report.summary,
+            failedClauses: [],
+          })
+          .catch((e) => req.log.warn({ err: e }, 'manual narrative generation failed'));
+        reply.code(202);
+        ok(reply, { reportId, status: 'narrative_generating' });
+      } catch (e) {
+        handleError(reply, e);
+      }
+    },
+  );
+
   app.get('/api/projects/:id/reports/:reportId', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
       const { id, reportId } = req.params as { id: string; reportId: string };

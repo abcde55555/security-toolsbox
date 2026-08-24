@@ -9,6 +9,8 @@ import { nowIso } from '@en18031/shared';
 import ExcelJS from 'exceljs';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
+import { createActiveAiProvider } from './aiFactory.js';
+import { logger } from '../logger.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -126,7 +128,80 @@ export class ReportService {
       after: { projectId, grade, runId },
     });
 
+    // AI narrative is generated asynchronously: the report returns immediately
+    // in template mode and the prose lands moments later via setNarrative +
+    // the 'report:narrative' bus event. Any failure degrades silently.
+    void this.generateNarrative(report.id, projectId, runId, {
+      grade,
+      summary,
+      failedClauses: leaves
+        .filter((c) => latestByClause.get(c.clauseId)?.pass === false)
+        .map((c) => `${c.clauseId} ${c.title}（${latestByClause.get(c.clauseId)?.severity ?? ''}）`),
+    }).catch((e) => logger.warn({ err: e, reportId: report.id }, 'narrative generation failed'));
+
     return report;
+  }
+
+  /**
+   * Generate the narrative section with narrativeModel and persist it.
+   * Exposed for the on-demand regeneration route as well.
+   */
+  async generateNarrative(
+    reportId: string,
+    projectId: string,
+    runId: string | undefined,
+    context: { grade: ReportGrade; summary: ReportSummary; failedClauses: string[] },
+  ): Promise<Report | null> {
+    const factory = await createActiveAiProvider(this.ctx.repos, 'narrative');
+    if (!factory) return null;
+    const s = context.summary;
+    const prompt = [
+      `项目合规评级：${context.grade}`,
+      `适用子项 ${s.applicable}：通过 ${s.pass}，失败 ${s.fail}，未覆盖 ${s.notCovered}。`,
+      `风险分布：高 ${s.failBySeverity.high} / 中 ${s.failBySeverity.middle} / 低 ${s.failBySeverity.low}。`,
+      context.failedClauses.length > 0
+        ? `失败条款：\n${context.failedClauses.map((c) => `- ${c}`).join('\n')}`
+        : '失败条款：（无）',
+      '',
+      '请以首席安全评估师口吻输出 Markdown 叙述报告，仅包含以下三个小节：',
+      '## 总体结论（2-3 句，说明评级依据）',
+      '## 主要风险（按严重度列出失败项的业务影响）',
+      '## 整改建议（每条对应具体失败项，给出可执行的下一步）',
+    ].join('\n');
+    // Reasoning gateways may exhaust max_tokens on thinking or return an empty
+    // message; budget generously and retry once on empty output.
+    let narrative = '';
+    for (let attempt = 0; attempt < 2 && !narrative; attempt++) {
+      try {
+        const result = await factory.provider.chat(
+          [
+            {
+              role: 'system',
+              content:
+                '你是物联网安全合规评估报告撰写助手。只依据给定统计数据与失败清单写作，不虚构未提供的事实。输出为简体中文 Markdown。',
+            },
+            { role: 'user', content: prompt },
+          ],
+          { model: factory.model, maxTokens: 16384 },
+        );
+        narrative = (result.message.content ?? '').trim();
+      } catch (err) {
+        logger.warn({ err, attempt, reportId }, 'narrative generation attempt failed');
+      }
+    }
+    if (!narrative) return null;
+    const updated = this.ctx.repos.reports.setNarrative(reportId, narrative);
+    try {
+      this.ctx.bus.emit('report:narrative', {
+        projectId,
+        reportId,
+        runId,
+        narrative,
+      });
+    } catch (e) {
+      logger.warn({ err: e }, 'failed to broadcast report:narrative');
+    }
+    return updated;
   }
 
   latest(projectId: string): Report | null {

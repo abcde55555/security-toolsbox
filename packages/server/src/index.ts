@@ -21,6 +21,9 @@ import { auditRoutes } from './routes/audit.js';
 import { standardRoutes } from './routes/standards.js';
 import { agentRoutes } from './routes/agent.js';
 import { settingsRoutes } from './routes/settings.js';
+import { knowledgeRoutes } from './routes/knowledge.js';
+import { skillRoutes } from './routes/skills.js';
+import { notificationRoutes } from './routes/notifications.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'unhandled promise rejection');
@@ -109,6 +112,9 @@ async function bootstrap(): Promise<void> {
   await app.register(standardRoutes);
   await app.register(agentRoutes);
   await app.register(settingsRoutes);
+  await app.register(knowledgeRoutes);
+  await app.register(skillRoutes);
+  await app.register(notificationRoutes);
 
   const services = await initServices();
   try {
@@ -148,6 +154,16 @@ async function bootstrap(): Promise<void> {
   services.bus.on('run:batchProgress', forward('run:batchProgress'));
   services.bus.on('tool:health', (payload: Record<string, unknown>) => {
     io.emit('tool:health', payload);
+  });
+  // Notifications are platform-wide (single tenant): broadcast to all clients.
+  services.bus.on('notification:new', (payload: Record<string, unknown>) => {
+    io.emit('notification:new', payload);
+  });
+  // AI narrative lands after the report response: route by run room when the
+  // report is bound to a run, otherwise broadcast.
+  services.bus.on('report:narrative', (payload: { runId?: string } & Record<string, unknown>) => {
+    if (payload?.runId) io.to(`run:${payload.runId}`).emit('report:narrative', payload);
+    else io.emit('report:narrative', payload);
   });
 
   // Forward all agent:* bus events to the agent:${sessionId} room. Each payload

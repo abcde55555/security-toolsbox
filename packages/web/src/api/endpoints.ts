@@ -17,6 +17,10 @@ import type {
   AgentPhase,
   AgentSessionStatus,
   AiProviderConfig,
+  KnowledgeNote,
+  Skill,
+  Notification,
+  NotificationStatus,
 } from '@en18031/shared';
 
 export interface StepRunDetail extends StepRun {
@@ -493,6 +497,64 @@ export const ReportsApi = {
     `/api/projects/${projectId}/reports/${reportId}/download`,
   jsonUrl: (projectId: string, reportId: string) =>
     `/api/projects/${projectId}/reports/${reportId}/json`,
+  /** Ask the server to (re)generate the AI narrative; result arrives via report:narrative or later GET. */
+  regenerateNarrative: (projectId: string, reportId: string) =>
+    api.post<{ reportId: string; status: string }>(
+      `/projects/${projectId}/reports/${reportId}/narrative`,
+      {},
+    ),
+};
+
+// ===== Knowledge Notes / Skills =====
+
+export const KnowledgeApi = {
+  list: (keyword?: string) =>
+    api.get<KnowledgeNote[]>(
+      `/knowledge-notes${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`,
+    ),
+  create: (body: {
+    title: string;
+    content: string;
+    tags?: string[];
+    sourceType?: 'manual' | 'url' | 'case';
+    sourceUrl?: string;
+  }) => api.post<KnowledgeNote>('/knowledge-notes', body),
+  update: (
+    id: string,
+    body: {
+      title?: string;
+      content?: string;
+      tags?: string[];
+      sourceType?: 'manual' | 'url' | 'case';
+      sourceUrl?: string | null;
+    },
+  ) => api.put<KnowledgeNote>(`/knowledge-notes/${id}`, body),
+  remove: (id: string) => api.del<{ id: string; deleted: boolean }>(`/knowledge-notes/${id}`),
+  /** AI-compile a note into a draft skill (degrades to raw-note wrap without a provider). */
+  compile: (id: string, skillKey?: string) =>
+    api.post<{ skill: Skill; warnings: string[] }>(
+      `/knowledge-notes/${id}/compile`,
+      skillKey ? { skillKey } : {},
+    ),
+};
+
+export const SkillsApi = {
+  list: (keyword?: string) =>
+    api.get<Skill[]>(`/skills${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`),
+  versions: (id: string) => api.get<Skill[]>(`/skills/${id}/versions`),
+  approve: (id: string) => api.post<Skill>(`/skills/${id}/approve`),
+  archive: (id: string) => api.post<Skill>(`/skills/${id}/archive`),
+};
+
+export const NotificationsApi = {
+  list: (status?: NotificationStatus) =>
+    api.get<Notification[]>(`/notifications${status ? `?status=${status}` : ''}`),
+  unreadCount: () => api.get<{ count: number }>('/notifications/unread-count'),
+  setStatus: (id: string, status: NotificationStatus, snoozeHours?: number) =>
+    api.post<Notification>(`/notifications/${id}/status`, { status, snoozeHours }),
+  /** Accept an AI sedimentation proposal -> creates a draft Skill. */
+  acceptSkill: (id: string) =>
+    api.post<{ skill: Skill; notification: Notification }>(`/notifications/${id}/accept-skill`, {}),
 };
 
 // ===== AI Provider / Settings =====

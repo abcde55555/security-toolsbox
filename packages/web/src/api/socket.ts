@@ -38,6 +38,8 @@ export interface RunStreamEvents {
     message?: string;
   }) => void;
   onBatchProgress?: (p: { runId: string; percent: number; status?: string }) => void;
+  /** AI narrative for the report bound to this run landed (payload carries narrative text). */
+  onNarrative?: (p: { runId?: string; projectId: string; reportId: string; narrative: string }) => void;
 }
 
 export function subscribeRun(runId: string, handlers: RunStreamEvents): () => void {
@@ -47,6 +49,7 @@ export function subscribeRun(runId: string, handlers: RunStreamEvents): () => vo
   if (handlers.onProgress) socket.on('run:progress', handlers.onProgress);
   if (handlers.onStatus) socket.on('run:status', handlers.onStatus);
   if (handlers.onBatchProgress) socket.on('run:batchProgress', handlers.onBatchProgress);
+  if (handlers.onNarrative) socket.on('report:narrative', handlers.onNarrative);
   return () => {
     socket.emit('unsubscribe', { runId });
     socket.disconnect();
@@ -63,6 +66,7 @@ export function useRunStream(runId: string | undefined, handlers: RunStreamEvent
       onProgress: (p) => ref.current.onProgress?.(p),
       onStatus: (p) => ref.current.onStatus?.(p),
       onBatchProgress: (p) => ref.current.onBatchProgress?.(p),
+      onNarrative: (p) => ref.current.onNarrative?.(p),
     });
     return unsub;
   }, [runId]);

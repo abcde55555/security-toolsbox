@@ -4,6 +4,7 @@ import type { AgentBusEvent, AgentLoopDeps, EmitEventInput, AgentToolContext } f
 import { assertTransition } from './phaseMachine.js';
 import { dispatchTool, TOOL_SCHEMAS } from './toolBridge.js';
 import { buildSystemPrompt } from './prompts.js';
+import { notify } from '../services/notificationService.js';
 import type { ChatMessage, ToolCall } from './ai/types.js';
 
 export interface RunSessionHandle {
@@ -58,7 +59,7 @@ export function runPlannerLoop(
     deps.repos.agent.updatePhase(state.session.id, to);
     state.phase = to;
     state.session = { ...state.session, phase: to };
-    emit({ type: 'phase_change', content: reason ?? `${from} -> ${to}` });
+    emit({ type: 'phase_change', content: JSON.stringify({ from, to, reason: reason ?? null }) });
     forward({ event: 'agent:phase', sessionId: state.session.id, from, to, isRollback: transition.isRollback });
     forward({
       event: 'agent:session',
@@ -104,15 +105,22 @@ export function runPlannerLoop(
             .filter((c): c is NonNullable<typeof c> => !!c)
         : [];
 
+      const skillContext = deps.repos.skills.list({ status: 'approved' }).items;
       const systemPrompt = buildSystemPrompt({
         session: state.session,
         clauses,
         authorizedTools: state.session.authorizedTools,
+        skills: skillContext,
       });
 
       const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+      // Anthropic (and good practice) requires at least one user message; seed
+      // the loop with a kickoff prompt when the caller didn't supply one.
+      const kickoff =
+        opts.initialUserMessage?.trim() ||
+        '开始本次合规测试会话：先确认设备档案与接入方式，然后规划并执行测试步骤。';
+      messages.push({ role: 'user', content: kickoff });
       if (opts.initialUserMessage) {
-        messages.push({ role: 'user', content: opts.initialUserMessage });
         emit({ type: 'user_message', role: 'user', content: opts.initialUserMessage });
         forward({ event: 'agent:message', sessionId: state.session.id, role: 'user', content: opts.initialUserMessage });
       }
@@ -125,7 +133,15 @@ export function runPlannerLoop(
         }
 
         // Refresh system prompt's phase line by replacing the system message.
-        messages[0] = { role: 'system', content: buildSystemPrompt({ session: state.session, clauses, authorizedTools: state.session.authorizedTools }) };
+        messages[0] = {
+          role: 'system',
+          content: buildSystemPrompt({
+            session: state.session,
+            clauses,
+            authorizedTools: state.session.authorizedTools,
+            skills: skillContext,
+          }),
+        };
 
         let result;
         try {
@@ -202,6 +218,32 @@ export function runPlannerLoop(
       const finalStatus = state.phase === 'review' ? 'done' : state.status;
       deps.repos.agent.finish(state.session.id, finalStatus);
       state.status = finalStatus;
+      if (finalStatus === 'done') {
+        // Non-blocking sedimentation nudge: a human decides whether this case
+        // should be crystallized into skills/templates. Never blocks the run.
+        try {
+          const verdicts = deps.repos.results.listVerdictsByRun(projectRunId);
+          const approved = verdicts.filter((v) => v.reviewStatus === 'approved').length;
+          if (approved > 0) {
+            notify(deps.repos, deps.bus, {
+              type: 'template_save',
+              title: `会话 ${state.session.id.slice(0, 8)} 完成：${approved} 条判定已通过`,
+              message: '本次案例已产生通过判定，是否沉淀为技能或合规模板？',
+              payload: {
+                sessionId: state.session.id,
+                projectId: state.session.projectId,
+                projectRunId,
+                approvedVerdicts: approved,
+              },
+              sessionId: state.session.id,
+              projectId: state.session.projectId,
+              createdBy: deps.userId,
+            });
+          }
+        } catch (e) {
+          logger.warn({ err: e }, 'failed to create session-end sedimentation notification');
+        }
+      }
       if (state.phase !== 'review') {
         forward({
           event: 'agent:error',

@@ -2,17 +2,18 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { AiProviderInput } from '@en18031/shared';
 import { getServices } from '../services/index.js';
 import { maskKey } from '../repositories/settingRepository.js';
+import { requireRole } from './helpers.js';
 
 export const settingsRoutes: FastifyPluginAsync = async (app) => {
   const repos = () => getServices().repos;
 
-  app.get('/api/settings/ai/providers', async () => {
+  app.get('/api/settings/ai/providers', { preHandler: requireRole('auditor') }, async () => {
     const r = repos();
     const providers = r.settings.listProviders().map((p) => r.settings.stripKey(p));
     return { code: 0, message: 'ok', data: { providers, activeId: r.settings.getActiveProviderId() } };
   });
 
-  app.post<{ Body: AiProviderInput }>('/api/settings/ai/providers', async (req, reply) => {
+  app.post<{ Body: AiProviderInput }>('/api/settings/ai/providers', { preHandler: requireRole('admin') }, async (req, reply) => {
     const input = (req.body ?? {}) as AiProviderInput;
     const r = repos();
     if (!input.name?.trim() || !input.baseUrl?.trim()) {
@@ -41,6 +42,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Params: { id: string } }>(
     '/api/settings/ai/providers/:id/activate',
+    { preHandler: requireRole('admin') },
     async (req, reply) => {
       const active = repos().settings.setActive(req.params.id);
       if (!active) {
@@ -53,6 +55,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete<{ Params: { id: string } }>(
     '/api/settings/ai/providers/:id',
+    { preHandler: requireRole('admin') },
     async (req) => {
       repos().settings.deleteProvider(req.params.id);
       return { code: 0, message: 'ok' };
@@ -61,6 +64,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: { id?: string } }>(
     '/api/settings/ai/providers/test',
+    { preHandler: requireRole('admin') },
     async (req, reply) => {
       const r = repos();
       const provider = req.body?.id
@@ -78,6 +82,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
           timeoutMs: provider.timeoutMs,
           maxRetries: 0,
           defaultModel: provider.planningModel,
+          protocol: provider.protocol,
         });
         const t0 = Date.now();
         const result = await p.chat(
@@ -99,10 +104,17 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
           },
         };
       } catch (err) {
+        const e = err as { code?: string; status?: number; cause?: unknown; message?: string };
+        const base = e?.message?.trim() || '连接失败';
+        const detail = e?.status != null && !base.includes(String(e.status)) ? `${base} (HTTP ${e.status})` : base;
+        req.log.error(
+          { err, protocol: provider.protocol, baseUrl: provider.baseUrl, model: provider.planningModel },
+          'AI provider test failed',
+        );
         reply.code(502).send({
           code: 9003,
-          message: err instanceof Error ? err.message : '连接失败',
-          data: { ok: false },
+          message: detail,
+          data: { ok: false, status: e?.status, kind: e?.code },
         });
       }
     },

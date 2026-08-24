@@ -534,6 +534,8 @@ export interface Report {
   hash?: string;
   grade: ReportGrade;
   summary: ReportSummary;
+  /** AI narrative (conclusion/risks/remediation) generated with narrativeModel; absent until ready. */
+  narrative?: string;
   generatedBy: string;
   generatedAt: string;
   isLatest: boolean;
@@ -711,3 +713,41 @@ export interface Notification {
   createdBy: string;
   createdAt: string;
 }
+
+// ===== Settings / AI Providers =====
+
+/** A configurable LLM provider (OpenAI-compatible endpoint). */
+export interface AiProviderConfig {
+  id: string;
+  /** Display name, e.g. "DeepSeek", "OpenAI", "本地 vLLM". */
+  name: string;
+  /**
+   * Protocol. 'openai' covers DeepSeek, OpenAI, vLLM, Ollama (/v1),
+   * Moonshot, Together, etc. 'anthropic' reserved for future.
+   */
+  protocol: 'openai' | 'anthropic';
+  baseUrl: string;
+  /** Secret key. Never returned in full by the API; masked. */
+  apiKey?: string;
+  /** Model used for planning / complex reasoning. */
+  planningModel: string;
+  /** Model used for short tasks (report narrative, skill compile). */
+  narrativeModel: string;
+  /** Per-request timeout in ms. */
+  timeoutMs: number;
+  /** Max retries on 429/5xx. */
+  maxRetries: number;
+  /** Whether this provider is the active one. */
+  isActive: boolean;
+  /** Whether the key passes a format/length sanity check (not an auth test). */
+  hasKey: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Payload for creating/updating a provider; apiKey optional on update. */
+export type AiProviderInput = Omit<AiProviderConfig, 'id' | 'hasKey' | 'createdAt' | 'updatedAt'> & {
+  id?: string;
+  /** On update, omit to keep the existing key. */
+  apiKey?: string;
+};

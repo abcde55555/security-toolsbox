@@ -573,6 +573,77 @@ const MIGRATIONS: {
     );
     `,
   },
+  {
+    id: 10,
+    name: 'knowledge_skills_notifications',
+    sql: `
+    CREATE TABLE IF NOT EXISTS knowledge_notes (
+      id TEXT PRIMARY KEY,
+      workspaceId TEXT NOT NULL DEFAULT 'default',
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '[]',
+      attachments TEXT NOT NULL DEFAULT '[]',
+      sourceType TEXT NOT NULL DEFAULT 'manual',
+      sourceUrl TEXT,
+      author TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_notes_workspace ON knowledge_notes(workspaceId, updatedAt);
+
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      workspaceId TEXT NOT NULL DEFAULT 'default',
+      skillKey TEXT NOT NULL,
+      title TEXT NOT NULL,
+      frontmatter TEXT NOT NULL DEFAULT '{}',
+      body TEXT NOT NULL,
+      sourceNoteIds TEXT NOT NULL DEFAULT '[]',
+      sourceCaseIds TEXT NOT NULL DEFAULT '[]',
+      version INTEGER NOT NULL DEFAULT 1,
+      isCurrent INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'draft',
+      author TEXT NOT NULL,
+      approvedBy TEXT,
+      approvedAt TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skills_key ON skills(skillKey, isCurrent);
+    CREATE INDEX IF NOT EXISTS idx_skills_status ON skills(status);
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      workspaceId TEXT NOT NULL DEFAULT 'default',
+      userId TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL DEFAULT '',
+      reason TEXT,
+      payload TEXT NOT NULL DEFAULT '{}',
+      sessionId TEXT,
+      projectId TEXT,
+      status TEXT NOT NULL DEFAULT 'unread',
+      readAt TEXT,
+      snoozedUntil TEXT,
+      actedAt TEXT,
+      createdBy TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_status ON notifications(userId, status, createdAt);
+    CREATE INDEX IF NOT EXISTS idx_notifications_session ON notifications(sessionId);
+    `,
+    run: (database) => {
+      // AI narrative report: prose conclusion / risks / remediation generated with narrativeModel.
+      // PRAGMA table_info returns [] when reports does not exist (isolated test harnesses).
+      const cols = database.prepare('PRAGMA table_info(reports)').all() as Array<{ name: string }>;
+      if (cols.length === 0) return;
+      if (!cols.some((c) => c.name === 'narrative')) {
+        database.exec('ALTER TABLE reports ADD COLUMN narrative TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

@@ -11,6 +11,7 @@ import { OrchestratorService } from './orchestratorService.js';
 import { ClauseMappingService } from './clauseMappingService.js';
 import { ReportService, setReportService } from './reportService.js';
 import { CommandRunnerService } from './commandRunnerService.js';
+import { SkillService } from './skillService.js';
 import { AgentService } from '../agent/agentService.js';
 import type { ServiceContext } from './context.js';
 import type { Repositories } from '../repositories/index.js';
@@ -26,6 +27,7 @@ export interface Services {
   reports: ReportService;
   commandRunner: CommandRunnerService;
   agent: AgentService;
+  skills: SkillService;
   engine: ExecutionEngine;
   moduleLoader: ModuleLoader;
   bus: EventEmitter;
@@ -57,6 +59,7 @@ export function getServices(): Services {
   const orchestrator = new OrchestratorService(ctx);
   const commandRunner = new CommandRunnerService(ctx);
   const agent = new AgentService(repos, engine, moduleLoader, bus);
+  const skills = new SkillService(ctx);
 
   services = {
     repos,
@@ -69,6 +72,7 @@ export function getServices(): Services {
     reports,
     commandRunner,
     agent,
+    skills,
     engine,
     moduleLoader,
     bus,

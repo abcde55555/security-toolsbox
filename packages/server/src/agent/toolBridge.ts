@@ -6,6 +6,7 @@ import { runModule } from './toolHandlers/modules.js';
 import { planHumanStep } from './toolHandlers/humanStep.js';
 import { createVerdict } from './toolHandlers/verdict.js';
 import { advancePhase } from './toolHandlers/flow.js';
+import { searchSkills, proposeSkill } from './toolHandlers/skills.js';
 
 /**
  * White-listed agent tools. The model may only call these; raw shell is never
@@ -131,6 +132,38 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_skills',
+      description: '检索平台沉淀的历史经验技能（同类设备的测试手法、命令用法、判读要点）。在规划与采集阶段应主动查询。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '关键词（设备类型/协议/工具名等），留空返回最新技能' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'propose_skill',
+      description: '当本次会话形成可复用的测试经验时，以非阻塞通知向工程师提议沉淀为技能。不会直接写入技能库，需人工采纳。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '技能短标题（中文）' },
+          summary: { type: 'string', description: '一句话说明该经验的适用场景与价值' },
+          body: { type: 'string', description: '技能正文 Markdown：前置条件/操作步骤(含命令)/判读要点' },
+          sourceNoteIds: { type: 'array', items: { type: 'string' }, description: '关联的经验笔记 id（如有）' },
+        },
+        required: ['title'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 type Handler = (ctx: AgentToolContext, args: Record<string, unknown>) => Promise<ToolResult>;
@@ -143,6 +176,8 @@ const HANDLERS: Record<string, Handler> = {
   plan_human_step: (ctx, args) => planHumanStep(ctx, args as never),
   create_verdict: (ctx, args) => createVerdict(ctx, args as never),
   advance_phase: (ctx, args) => advancePhase(ctx, args as never),
+  search_skills: (ctx, args) => searchSkills(ctx, args as never),
+  propose_skill: (ctx, args) => proposeSkill(ctx, args as never),
 };
 
 export function isAuthorizedTool(name: string, authorizedTools: string[]): boolean {
