@@ -428,6 +428,132 @@ const MIGRATIONS: {
       addCol('template_steps', 'groupKey', 'TEXT');
     },
   },
+  {
+    id: 8,
+    name: 'agent_human_machine_collab',
+    sql: `
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      id TEXT PRIMARY KEY,
+      workspaceId TEXT NOT NULL DEFAULT 'default',
+      projectId TEXT NOT NULL,
+      projectRunId TEXT,
+      deviceProfile TEXT NOT NULL DEFAULT '{}',
+      selectedClauses TEXT NOT NULL DEFAULT '[]',
+      authorizedTools TEXT NOT NULL DEFAULT '[]',
+      phase TEXT NOT NULL DEFAULT 'onboarding',
+      status TEXT NOT NULL DEFAULT 'planning',
+      planningModel TEXT,
+      narrativeModel TEXT,
+      currentStepId TEXT,
+      rollbackCount INTEGER NOT NULL DEFAULT 0,
+      tokenUsage TEXT NOT NULL DEFAULT '{}',
+      lastError TEXT,
+      createdBy TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      finishedAt TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_project ON agent_sessions(projectId);
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_status ON agent_sessions(status);
+
+    CREATE TABLE IF NOT EXISTS agent_events (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      role TEXT,
+      content TEXT,
+      contentFileRef TEXT,
+      toolName TEXT,
+      toolArgs TEXT,
+      toolStatus TEXT,
+      stepRunId TEXT,
+      model TEXT,
+      promptTokens INTEGER,
+      completionTokens INTEGER,
+      latencyMs INTEGER,
+      createdAt TEXT NOT NULL,
+      UNIQUE (sessionId, seq)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_events_session ON agent_events(sessionId, seq);
+
+    CREATE TRIGGER IF NOT EXISTS agent_events_no_update
+    BEFORE UPDATE ON agent_events
+    BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS agent_events_no_delete
+    BEFORE DELETE ON agent_events
+    BEGIN SELECT RAISE(ABORT, 'agent_events is append-only'); END;
+
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id TEXT PRIMARY KEY,
+      projectId TEXT NOT NULL,
+      projectRunId TEXT,
+      agentSessionId TEXT,
+      type TEXT NOT NULL,
+      title TEXT,
+      content TEXT,
+      fileRefs TEXT NOT NULL DEFAULT '[]',
+      functionModule TEXT,
+      createdBy TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(agentSessionId);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(projectId);
+
+    CREATE INDEX IF NOT EXISTS idx_step_runs_agent_session ON step_runs(agentSessionId);
+    `,
+    run(database) {
+      const tableExists = (table: string): boolean =>
+        (database
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table) !== undefined);
+      const colsOf = (table: string): string[] => {
+        if (!tableExists(table)) return [];
+        return (database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+          (c) => c.name,
+        );
+      };
+      const addCol = (table: string, col: string, def: string) => {
+        if (!tableExists(table)) return;
+        if (!colsOf(table).includes(col)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+      };
+      addCol('step_runs', 'stepType', 'TEXT');
+      addCol('step_runs', 'phase', 'TEXT');
+      addCol('step_runs', 'functionModule', 'TEXT');
+      addCol('step_runs', 'instruction', 'TEXT');
+      addCol('step_runs', 'expectedOutcome', 'TEXT');
+      addCol('step_runs', 'artifacts', "TEXT NOT NULL DEFAULT '[]'");
+      addCol('step_runs', 'agentSessionId', 'TEXT');
+      addCol('clause_verdicts', 'reviewStatus', "TEXT NOT NULL DEFAULT 'approved'");
+      addCol('clause_verdicts', 'reviewedBy', 'TEXT');
+      addCol('clause_verdicts', 'reviewedAt', 'TEXT');
+      addCol('clause_verdicts', 'reviewNote', 'TEXT');
+      addCol('clause_verdicts', 'aiGenerated', 'INTEGER NOT NULL DEFAULT 0');
+      addCol('evidences', 'clauseId', 'TEXT');
+      addCol('evidences', 'functionModule', 'TEXT');
+      addCol('evidences', 'sourceStepType', 'TEXT');
+      addCol('evidences', 'mimeType', 'TEXT');
+      addCol('projects', 'mode', "TEXT NOT NULL DEFAULT 'template'");
+      addCol('clauses', 'applicableParts', "TEXT NOT NULL DEFAULT '[]'");
+
+      // Phase-boundary guard: agent-session verdicts may only be created in adjudication.
+      // Template-mode runs (step_runs with no agentSessionId) are allowed through.
+      database.exec(`
+        CREATE TRIGGER IF NOT EXISTS clause_verdicts_phase_guard
+        BEFORE INSERT ON clause_verdicts
+        WHEN EXISTS (
+          SELECT 1 FROM step_runs sr
+          WHERE sr.id = NEW.stepRunId AND sr.agentSessionId IS NOT NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM step_runs sr
+          JOIN agent_sessions s ON s.id = sr.agentSessionId
+          WHERE sr.id = NEW.stepRunId AND s.phase = 'adjudication'
+        )
+        BEGIN SELECT RAISE(ABORT, 'verdict allowed only in adjudication phase'); END;
+      `);
+    },
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

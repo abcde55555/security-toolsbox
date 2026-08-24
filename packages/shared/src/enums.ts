@@ -128,6 +128,67 @@ export const TOOL_CATEGORIES = [
   'firmware-analysis',
   'authentication',
   'reconnaissance',
+  'device-interaction',
   'other',
 ] as const;
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
+
+// ---- Agent / AI 相关 ----
+
+export const AGENT_PHASES = ['onboarding', 'collection', 'adjudication', 'review'] as const;
+export type AgentPhase = (typeof AGENT_PHASES)[number];
+
+export const AGENT_SESSION_STATUSES = [
+  'planning',
+  'running',
+  'waiting_human',
+  'waiting_confirm',
+  'review',
+  'done',
+  'aborted',
+  'error',
+] as const;
+export type AgentSessionStatus = (typeof AGENT_SESSION_STATUSES)[number];
+
+export const STEP_TYPES = ['tool_exec', 'human_instruction', 'evidence_attach', 'analysis'] as const;
+export type StepType = (typeof STEP_TYPES)[number];
+
+export const VERDICT_REVIEW_STATUSES = [
+  'pending_review',
+  'approved',
+  'rejected',
+  'skipped',
+] as const;
+export type VerdictReviewStatus = (typeof VERDICT_REVIEW_STATUSES)[number];
+
+export const NOTIFICATION_TYPES = [
+  'tool_sediment',
+  'skill_sediment',
+  'evidence_gap',
+  'template_save',
+  'config_fix',
+  'review_hint',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const NOTIFICATION_STATUSES = ['unread', 'read', 'accepted', 'dismissed', 'snoozed'] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export const AGENT_EVENT_TYPES = [
+  'model_message',
+  'tool_call',
+  'tool_result',
+  'human_step',
+  'phase_change',
+  'verdict_draft',
+  'notification',
+  'error',
+  'user_message',
+] as const;
+export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
+
+export const SKILL_STATUSES = ['draft', 'approved', 'archived'] as const;
+export type SkillStatus = (typeof SKILL_STATUSES)[number];
+
+export const PROJECT_MODES = ['template', 'agent_guided'] as const;
+export type ProjectMode = (typeof PROJECT_MODES)[number];

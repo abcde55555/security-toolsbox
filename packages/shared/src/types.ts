@@ -1,4 +1,7 @@
 import type {
+  AgentEventType,
+  AgentPhase,
+  AgentSessionStatus,
   CommandRunStatus,
   ComplianceLevel,
   EvidenceType,
@@ -9,14 +12,20 @@ import type {
   HealthStatus,
   InteractionMode,
   MatcherType,
+  NotificationStatus,
+  NotificationType,
   OnMatchAction,
+  ProjectMode,
   ReportFormat,
   ReportGrade,
   Severity,
+  SkillStatus,
   StepRunStatus,
+  StepType,
   ToolCategory,
   ToolType,
   UserRole,
+  VerdictReviewStatus,
   VersionLockMode,
 } from './enums.js';
 
@@ -416,6 +425,14 @@ export interface StepRun {
   evidenceCount: number;
   verdictCount: number;
   percent: number;
+  // Agent 扩展
+  stepType?: StepType;
+  phase?: AgentPhase;
+  functionModule?: string;
+  instruction?: string;
+  expectedOutcome?: string;
+  artifacts?: string[];
+  agentSessionId?: string;
 }
 
 export interface Standard {
@@ -441,6 +458,8 @@ export interface Clause {
   defaultSeverity: Severity;
   parentId?: string;
   tags: string[];
+  /** Applicable EN parts, e.g. ["-1","-2","-3"]. Empty = all. */
+  applicableParts?: string[];
 }
 
 /** A clause with its direct children resolved, for tree rendering. */
@@ -474,6 +493,12 @@ export interface ClauseVerdict {
   overrideReason?: string;
   verdictGroup: string;
   createdAt: string;
+  // Agent 审核扩展
+  reviewStatus?: VerdictReviewStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  aiGenerated?: boolean;
 }
 
 export interface AuditLog {
@@ -582,3 +607,107 @@ export const ERROR_CODES = {
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+// ===== Agent / AI =====
+
+export interface AgentSession {
+  id: string;
+  projectId: string;
+  projectRunId?: string;
+  deviceProfile: Record<string, unknown>;
+  selectedClauses: string[];
+  authorizedTools: string[];
+  phase: AgentPhase;
+  status: AgentSessionStatus;
+  planningModel?: string;
+  narrativeModel?: string;
+  currentStepId?: string;
+  rollbackCount: number;
+  lastError?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
+export interface AgentEvent {
+  id: string;
+  sessionId: string;
+  seq: number;
+  type: AgentEventType;
+  role?: string;
+  content?: string;
+  contentFileRef?: string;
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  toolStatus?: string;
+  stepRunId?: string;
+  model?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  latencyMs?: number;
+  createdAt: string;
+}
+
+export interface Artifact {
+  id: string;
+  projectId: string;
+  projectRunId?: string;
+  agentSessionId?: string;
+  type: 'device_profile' | 'network_topology' | 'onboarding_result' | 'other';
+  title?: string;
+  content?: string;
+  fileRefs: string[];
+  functionModule?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface KnowledgeNote {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  attachments: string[];
+  sourceType: 'manual' | 'url' | 'case';
+  sourceUrl?: string;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Skill {
+  id: string;
+  skillKey: string;
+  title: string;
+  frontmatter: Record<string, unknown>;
+  body: string;
+  sourceNoteIds: string[];
+  sourceCaseIds: string[];
+  version: number;
+  isCurrent: boolean;
+  status: SkillStatus;
+  author: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  reason?: string;
+  payload: Record<string, unknown>;
+  sessionId?: string;
+  projectId?: string;
+  status: NotificationStatus;
+  readAt?: string;
+  snoozedUntil?: string;
+  actedAt?: string;
+  createdBy: string;
+  createdAt: string;
+}
