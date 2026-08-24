@@ -3,15 +3,22 @@ import { z } from 'zod';
 import { getServices } from '../services/index.js';
 import { ok, requireRole, handleError, parseBody } from './helpers.js';
 
-const createSessionSchema = z.object({
-  projectId: z.string().min(1),
-  deviceProfile: z.record(z.string(), z.unknown()).optional(),
-  selectedClauses: z.array(z.string()).optional(),
-  authorizedTools: z.array(z.string()).optional(),
-  planningModel: z.string().optional(),
-  narrativeModel: z.string().optional(),
-  initialMessage: z.string().optional(),
-});
+const createSessionSchema = z
+  .object({
+    projectId: z.string().min(1).optional(),
+    standardVersion: z.string().min(1).optional(),
+    name: z.string().min(1).max(200).optional(),
+    deviceProfile: z.record(z.string(), z.unknown()).optional(),
+    selectedClauses: z.array(z.string()).optional(),
+    authorizedTools: z.array(z.string()).optional(),
+    planningModel: z.string().optional(),
+    narrativeModel: z.string().optional(),
+    initialMessage: z.string().optional(),
+  })
+  .refine((d) => d.projectId || d.standardVersion, {
+    message: 'projectId 与 standardVersion 至少提供一个',
+    path: ['projectId'],
+  });
 
 const messageSchema = z.object({
   content: z.string().min(1),
@@ -89,7 +96,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       const body = parseBody(z.object({ message: z.string().optional() }), req.body ?? {});
       const services = getServices();
       const user = (req as FastifyRequest & { user?: { id: string } }).user;
-      services.agent.start(id, user?.id ?? 'local-admin', { message: body.message });
+      await services.agent.start(id, user?.id ?? 'local-admin', { message: body.message });
       ok(reply, { sessionId: id, status: 'running' });
     } catch (e) {
       handleError(reply, e);

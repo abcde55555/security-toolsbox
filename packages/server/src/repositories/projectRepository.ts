@@ -288,7 +288,7 @@ export class ProjectRepository {
         `INSERT INTO step_runs
           (id, projectRunId, stepId, stepSnapshot, status, evidenceCount, verdictCount, percent,
            stepType, phase, functionModule, instruction, expectedOutcome, artifacts, agentSessionId)
-         VALUES (?,?,?,?,'pending',0,0,0,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,'pending',0,0,0,?,?,?,?,?,?,?)`,
       )
       .run(
         id,

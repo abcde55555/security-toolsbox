@@ -91,31 +91,54 @@ function reconcileTool(prev: ToolCallState, p: AgentToolResultPayload): ToolCall
   };
 }
 
+/** Safely parse a JSON string; return undefined for plain text/markdown. */
+function tryParse<T>(text: string | undefined): T | undefined {
+  if (!text) return undefined;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return undefined;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Replay a historical/backfill event through the same state transitions as live ones. */
 function applyEvent(state: AgentSessionState, ev: AgentEvent): AgentSessionState {
   switch (ev.type) {
-    case 'phase_change':
-      return applyPhase(state, (ev.content ? JSON.parse(ev.content) : {}) as { from?: string; to?: string }, ev.seq);
+    case 'phase_change': {
+      const p = tryParse<{ from?: string; to?: string }>(ev.content);
+      return p?.to ? applyPhase(state, p, ev.seq) : state;
+    }
     case 'tool_call': {
       const tcId = (ev.toolArgs?.toolCallId as string | undefined) ?? ev.stepRunId ?? ev.id;
       return applyToolCall(state, { ...ev, toolCallId: tcId });
     }
     case 'tool_result': {
-      const payload = ev.content ? (JSON.parse(ev.content) as AgentToolResultPayload) : undefined;
-      if (!payload) return state;
+      // In the event log, `content` is the tool's free-text output (markdown,
+      // a status sentence, etc.); structured fields live as columns on the row.
+      const stepRunId = ev.stepRunId ?? '';
+      const status = ev.toolStatus === 'ok' ? 'success' : ev.toolStatus === 'error' ? 'fail' : ev.toolStatus ?? 'success';
       return applyToolResult(state, {
-        ...payload,
-        stepRunId: payload.stepRunId ?? ev.stepRunId ?? '',
-        toolCallId: payload.toolCallId ?? ev.stepRunId ?? ev.id,
+        stepRunId,
+        toolCallId: stepRunId || ev.id,
+        status,
+        output: ev.content ?? '',
+        durationMs: ev.latencyMs,
       });
     }
     case 'human_step': {
-      const req = ev.content ? (JSON.parse(ev.content) as Omit<HumanStepState, 'completed'>) : undefined;
-      if (!req) return state;
-      return applyHumanRequested(state, { ...req, stepRunId: req.stepRunId ?? ev.stepRunId ?? '' });
+      // `content` is the human instruction in markdown, not JSON. The step
+      // title was already set by the preceding step_started/tool_call event.
+      const stepRunId = ev.stepRunId ?? '';
+      if (!stepRunId) return state;
+      return applyHumanRequested(state, {
+        stepRunId,
+        instruction: ev.content ?? '',
+      });
     }
     case 'verdict_draft': {
-      const v = ev.content ? (JSON.parse(ev.content) as VerdictDraft) : undefined;
+      const v = tryParse<VerdictDraft>(ev.content);
       return v ? applyVerdict(state, v) : state;
     }
     case 'model_message':
@@ -147,6 +170,11 @@ function applyPhase(state: AgentSessionState, p: { from?: string; to?: string },
 function applyToolCall(state: AgentSessionState, ev: AgentEvent & { toolCallId?: string }): AgentSessionState {
   const toolCallId = ev.toolCallId ?? ev.stepRunId ?? ev.id;
   const stepRunId = ev.stepRunId ?? toolCallId;
+  // Step bookkeeping events are emitted as tool_calls with toolName "step:<type>"
+  // (the live socket path sends a separate step_started; replay only has this row).
+  const stepMatch = ev.toolName?.match(/^step:(.+)$/);
+  const syntheticStepType = stepMatch?.[1];
+  const stepTitle = (ev.toolArgs?.title as string | undefined) ?? undefined;
   const existing = state.toolCalls.get(toolCallId);
   const tc: ToolCallState = existing ?? {
     toolCallId,
@@ -162,7 +190,15 @@ function applyToolCall(state: AgentSessionState, ev: AgentEvent & { toolCallId?:
   const toolCalls = new Map(state.toolCalls);
   toolCalls.set(toolCallId, { ...tc, args: ev.toolArgs ?? tc.args, toolName: ev.toolName ?? tc.toolName, phase: tc.phase ?? state.session?.phase });
   let steps = state.steps;
-  if (stepRunId) steps = upsertStep(steps, stepRunId, { status: 'running', stepType: 'tool_exec', phase: state.session?.phase, startedAt: ev.createdAt });
+  if (stepRunId) {
+    steps = upsertStep(steps, stepRunId, {
+      status: 'running',
+      stepType: (syntheticStepType as AgentStep['stepType']) ?? 'tool_exec',
+      phase: state.session?.phase,
+      startedAt: ev.createdAt,
+      ...(stepTitle ? { title: stepTitle } : {}),
+    });
+  }
   return { ...state, toolCalls, steps, orderCounter: nextOrder(state) };
 }
 

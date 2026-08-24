@@ -14,7 +14,9 @@ import { runPlannerLoop, type RunSessionHandle } from './plannerLoop.js';
 import type { AgentLoopDeps } from './agentContext.js';
 
 interface CreateSessionInput {
-  projectId: string;
+  projectId?: string;
+  standardVersion?: string;
+  name?: string;
   deviceProfile?: Record<string, unknown>;
   selectedClauses?: string[];
   authorizedTools?: string[];
@@ -73,25 +75,58 @@ export class AgentService {
   }
 
   createSession(input: CreateSessionInput): AgentSession {
-    const project = this.repos.projects.getById(input.projectId);
-    if (!project) throw new AppError(9004, '项目不存在', undefined, 404);
+    // If no project was supplied, provision a throwaway agent-guided project so
+    // the session has something to hang its project_run / step_runs off of.
+    let project = input.projectId ? this.repos.projects.getById(input.projectId) : null;
+    if (input.projectId && !project) throw new AppError(9004, '项目不存在', undefined, 404);
+    if (!project) {
+      if (!input.standardVersion) {
+        throw new AppError(9003, '创建会话需要 projectId 或 standardVersion', undefined, 400);
+      }
+      const profile = input.deviceProfile ?? {};
+      const brand = String(profile.brand ?? '').trim();
+      const model = String(profile.model ?? '').trim();
+      const name =
+        input.name?.trim() ||
+        [brand, model].filter(Boolean).join(' ') ||
+        `Agent 测试 ${new Date().toLocaleString('zh-CN')}`;
+      project = this.repos.projects.create({
+        name,
+        description: 'Agent 引导测试会话自动创建',
+        templateId: 'agent',
+        templateVersionSnapshot: 1,
+        standardVersion: input.standardVersion,
+        targetComplianceLevel: 'L1',
+        variables: profile,
+        createdBy: input.createdBy,
+      });
+    }
 
     // An agent session owns one project_run that all its step_runs hang off.
     const run = this.repos.projects.createRun({
-      projectId: input.projectId,
+      projectId: project.id,
       startedBy: input.createdBy,
       snapshotVariables: project.variables,
       triggerMode: 'agent',
     });
 
+    // Model resolution: explicit input > active provider's configured model >
+    // env/config default. Sessions snapshot the model so later config edits
+    // don't silently change an in-flight run.
+    const activeProvider = this.repos.settings.getActiveProvider();
+    const planningModel =
+      input.planningModel ?? activeProvider?.planningModel ?? config.ai.planningModel;
+    const narrativeModel =
+      input.narrativeModel ?? activeProvider?.narrativeModel ?? config.ai.narrativeModel;
+
     const session = this.repos.agent.createSession({
-      projectId: input.projectId,
+      projectId: project.id,
       projectRunId: run.id,
       deviceProfile: input.deviceProfile ?? project.variables ?? {},
       selectedClauses: input.selectedClauses ?? [],
       authorizedTools: input.authorizedTools ?? [],
-      planningModel: input.planningModel ?? config.ai.planningModel,
-      narrativeModel: input.narrativeModel ?? config.ai.narrativeModel,
+      planningModel,
+      narrativeModel,
       createdBy: input.createdBy,
     });
     this.repos.agent.setProjectRunId(session.id, run.id);
@@ -101,7 +136,7 @@ export class AgentService {
       action: 'agent.session_create',
       entityType: 'agent_session',
       entityId: session.id,
-      after: { projectId: input.projectId, projectRunId: run.id, clauses: input.selectedClauses?.length ?? 0 },
+      after: { projectId: project.id, projectRunId: run.id, clauses: input.selectedClauses?.length ?? 0, autoProject: !input.projectId },
     });
 
     return this.repos.agent.getSession(session.id)!;

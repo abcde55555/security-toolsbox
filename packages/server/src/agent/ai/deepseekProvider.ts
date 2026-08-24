@@ -153,10 +153,27 @@ function fromAnthropicBlock(
   for (const b of blocks) {
     if (b.type === 'text' && b.text) text += b.text;
     if (b.type === 'tool_use' && b.id && b.name) {
+      // Defensive: some Anthropic-compatible gateways return `input` as a raw
+      // string instead of an object. Coerce so the dispatcher always receives
+      // a JSON object literal in `arguments`.
+      let input: unknown = b.input ?? {};
+      if (typeof input === 'string') {
+        const trimmed = input.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            input = JSON.parse(trimmed);
+          } catch {
+            input = {};
+          }
+        } else {
+          input = {};
+        }
+      }
+      if (typeof input !== 'object' || input === null) input = {};
       toolCalls.push({
         id: b.id,
         type: 'function',
-        function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
+        function: { name: b.name, arguments: JSON.stringify(input) },
       });
     }
   }
@@ -655,10 +672,14 @@ async function resolveConfig() {
 
 /** Build the configured provider, or null when AI is disabled / no key. */
 export async function createDeepSeekProvider(): Promise<DeepSeekProvider | null> {
-  if (!config.ai.enabled) return null;
+  // An active provider configured in the settings UI with an API key implicitly
+  // enables AI; AI_ENABLED=false only disables AI when no such provider exists.
+  const settings = await getSettings();
+  const active = settings?.getActiveProvider();
+  if (!config.ai.enabled && !active?.apiKey) return null;
   const { baseUrl, apiKey, timeoutMs, maxRetries, planningModel, protocol } = await resolveConfig();
   if (!apiKey) {
-    logger.warn('AI_ENABLED=true but no API key configured; AI provider unavailable');
+    logger.warn('AI enabled but no API key configured (set AI_ENABLED or add an active provider in Settings); AI provider unavailable');
     return null;
   }
   return new DeepSeekProvider({
