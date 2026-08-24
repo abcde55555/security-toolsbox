@@ -15,7 +15,17 @@
 3. **AI 不碰裸 shell、不跳过人工步骤**：命令只走模组/已注册工具；人工步骤 Promise 只能由人 resolve。
 4. **可回放、可审计**：所有工具调用/模型响应/人工动作/阶段切换写 append-only `agent_events` + `audit_logs`。
 5. **渐进交付**：P0 铺数据底座（无 AI 也能跑），P1 跑通端到端主链路，P2/P3 放开能力。每个阶段独立可验证。
-6. **P1 验收目标**：一个真实设备（Z6s，skill 种子）+ 一个条款族（**GEC 通用外部接口，GEC-1..GEC-8，以 CSV/系统条款库为准**），Agent 动态给 A/B 步骤 → 人工完成 → C 判定 → 审核 → 出报告，并主动给出沉淀通知。条款编号一律以 `EN18031评估信息表 - 评估方法总览表.csv` 和系统 `EN18031:2019` 标准下已填的族缩写条款为准，不臆造编号。
+6. **P1 是纵向切片，不是终态**：P1 用"一个真实设备（Z6s）+ 一个法规（EN18031）+ 一个条款族（GEC）"端到端验证架构，但代码不得写死这三者。验收看的是"换设备/换法规/换条款族也能跑通"的扩展能力，不是把 Z6s/EN18031/GEC 硬编码进去。
+7. **法规/标准普适（不绑 EN18031）**：
+   - `standards`/`clauses` 已是通用模型（`standardVersion` 是 clauses 主键的一部分）；以后加 CRA、其他法规只需建 standard + 导入条款，不改代码。
+   - 代码里**禁止**硬编码 `'EN18031:2019'` 作为默认值（现有路由里的默认值要改成从用户当前选定的 standard 取，或配置项）；机制族缩写（GEC/ACM/AUM…）是 EN18031 的数据，不是代码枚举。
+   - 条款判定逻辑基于通用的 `(clauseId, pass/fail, evidenceRefs, severity)`，不识别具体条款号；报告模板按 standard 可配置（不同法规定级规则可能不同）。
+   - CSV 导入是通用能力：任何法规只要给出"条款+requirement+测试方法+评估对象"结构相似的表都能导入。
+8. **设备/场景灵活（不绑 Z6s）**：
+   - 不同设备硬件/固件/协议/代码都不同，流程不能写死。Agent 靠 **skill 知识库 + 设备档案**动态规划 A/B 阶段，不是按固定脚本走。
+   - skill 按品牌/型号/芯片平台/设备类型/功能模块打标签检索，新设备 = 新 skill（人写笔记→AI 编译），不改代码。
+   - 工具是通用能力（nmap、抓包、binwalk、端口检测…），不与具体设备绑定；设备专属操作用"人工步骤+参考命令"承接。
+9. **案例驱动的自我增强闭环**：工程师每做完一个案例，其有效做法/踩坑/修正经 AI 提炼、人确认后沉淀为 skill/工具/模板（沉淀通知触发）。平台随案例增加而变强，反向服务后续项目。P1 先做"笔记→skill"和沉淀通知；案例自动反哺、向量检索放 P2。
 
 ---
 
@@ -68,18 +78,20 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
   - 插一条 `pending_review` verdict 不进定级、不计 pass；
   - `rejected` 后重跑产生的新 verdict 仍为 pending，approve 后才计入。
 
-#### T-BE-05 条款库以 CSV 为准对齐（不是新建 5.3-x）
-- **背景**：条款的权威来源是 `docs/agent/EN18031评估信息表 - 评估方法总览表.csv`（47 条，按机制族 ACM/AUM/SUM/SSM/SCM/RLM/NMM/TCM/CCK/GEC/CRY/LGM/DLM/UNM 组织，含 requirement 原文、测试条件、评估对象、概念/功能/充分性评估方法、适用 part -1/-2/-3）。系统 `standards=EN18031:2019` 下已按族缩写播种了条款（GEC-1..GEC-8、ACM-1..6 等），但 **`testingMethod` 等字段为空**；旧的 5.x 编号条款是早期原型，不作为 P1 验收依据。
-- **做什么**：
-  1. 写一个一次性导入/同步脚本（`packages/server/scripts/import-clauses-from-csv.mjs` 或 `db/clauseImport.ts`），读 CSV，按 clauseId（如 `GEC-2`、`AUM-1-1`）upsert 到 `EN18031:2019` 标准下，填充：`title`（中英）、`description`/requirement 原文、`testingMethod`（合并"概念评估+功能完整性+功能充分性"三列）、`level`（L1/L2/L3，按 CSV 适用 part 推断：-1/-3 偏 L1、-2 偏 L2，或单独存 `applicableParts` 字段）、`defaultSeverity`、tags（机制族）。
-  2. **不要新建 `5.3-6/7/8` 这类臆造编号**；CSV 里 GEC 族就是 GEC-1..GEC-8（注意没有 GEC-7 之后的"物理接口"是 GEC-5/GEC-6 范畴，以 CSV 行为准）。
-  3. 清理/标记 3 条 `X`/`CYC-*` 占位条款（确认无用后删除或标 `archived`）。
-  4. 旧 5.x 条款暂保留（模板流程可能在用），但 P1 的 agent-guided 会话只选 CSV 对齐后的族缩写条款。
+#### T-BE-05 通用 CSV 条款导入器（EN18031 CSV 是首个用例，不是唯一用例）
+- **背景**：条款权威来源是评估方法表（首个用例 `docs/agent/EN18031评估信息表 - 评估方法总览表.csv`，47 条，按机制族组织，含 requirement 原文、测试条件、评估对象、概念/功能/充分性评估、适用 part -1/-2/-3）。系统 `EN18031:2019` 下已有族缩写条款骨架但 `testingMethod` 为空；旧 5.x 条款是早期原型，agent 会话不使用。
+- **做什么——做一个通用导入能力，不是 EN18031 专用脚本**：
+  1. 实现 `POST /api/standards/:id/import-csv`（或 `db/clauseImport.ts`），上传 CSV + 列映射配置（哪列是 clauseId、title、requirement、testingMethod、parts…），按 `(standardVersion, clauseId)` upsert。列映射可配，以后 CRA 等法规用不同列名也能导。
+  2. 导入器支持：父条款（如 ACM、AUM 章节标题）与子条款（ACM-1）的 parentId 关联；`applicableParts` 存 JSON（-1/-2/-3）；`level` 可由 part 推断或显式映射；`tags` 标机制族。
+  3. 用 EN18031 CSV 跑一次填充：`testingMethod` 合并"概念评估+功能完整性+功能充分性"三列，requirement 存 `description`，中英标题从 CSV 解析。不新建 `5.3-6/7/8` 臆造编号；GEC 实际是 GEC-1..6、GEC-8（无 GEC-7）。
+  4. 清理 `X`/`CYC-*` 占位条款（删除或 archived）；旧 5.x 条款保留但 agent 会话不选。
+  5. **去硬编码**：把 `routes/clauses.ts` 里 5 处 `?? 'EN18031:2019'` 默认值改为"用户当前选定 standard"（从请求/header/会话取），无选定则返回 400 而不是悄悄用 EN18031。
 - **验收**：
-  - `SELECT count(*) FROM clauses WHERE standardVersion='EN18031:2019' AND testingMethod != ''` ≥ 47；
-  - GEC-2、SUM-2、CCK-1 等能查到完整的 requirement + testingMethod；
-  - 导入脚本幂等（跑两次不产生重复）；
-  - 前端"合规测试项"树展示族缩写 + 中文标题，与 CSV 一致。
+  - 通用导入器能导入 EN18031 CSV（≥47 条 testingMethod 非空），且换一个不同列结构的 CSV（可造一个 CRA 小样例）也能通过配置映射导入；
+  - GEC-2/SUM-2/CCK-1 有完整 requirement + testingMethod；
+  - 导入幂等；
+  - 代码里不再有 `'EN18031:2019'` 硬编码默认（常量定义允许，但不能作为隐式 fallback）；
+  - 前端条款树按选定 standard 展示。
 
 ### 2.2 前端 P0
 
@@ -177,16 +189,21 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
 - **做什么**：在工具调用结束/阶段切换节点 `setImmediate` 异步评估（失败不阻断主流程）；P1 只产 `tool_sediment`（某命令稳定执行≥2 次）、`skill_sediment`（遇到未识别设备型号）；写 notifications + socket 推 `notification:new`；accept 返回**预填 action payload**（不现场写库）。
 - **验收**：通知非阻塞；accept 返回跳转目标；dismiss/snooze 状态正确。
 
-#### T-BE-19 报告 AI 叙述
+#### T-BE-19 报告定级规则可配置（按 standard）
+- **背景**：不同法规的定级/通过规则可能不同（EN18031 按 fail 占比定 PASS/CONDITIONAL/FAIL，CRA 可能有自己的阈值和必备项）。定级逻辑不能写死 EN18031 规则。
+- **做什么**：把 `ReportService` 的定级算法抽成 `GradingStrategy` 接口，按 `standardVersion` 选策略；EN18031 作为第一个实现（现有 fail≤10% CONDITIONAL 等规则），其他标准可插策略。规则可配置（阈值、必备条款列表）存 standard 配置或单独 `grading_rules` 表。
+- **验收**：EN18031 定级结果与改造前一致；加一个 mock 标准用不同阈值能产出不同 grade；不改代码即可加新策略。
+
+#### T-BE-20 报告 AI 叙述
 - **文件**：`src/agent/reportAiService.ts`。
-- **做什么**：基于代码算好的 grade/byChapter/failBySeverity，用 flash 生成摘要 + 逐条整改建议，存 `report_ai_sections`；导出标注"AI 生成仅供参考"；数字不被模型覆盖。
-- **验收**：可单独刷新；去掉 AI 段报告数字不变。
+- **做什么**：基于代码算好的 grade/byChapter/failBySeverity，用 flash 生成摘要 + 逐条整改建议，存 `report_ai_sections`；导出标注"AI 生成仅供参考"；数字不被模型覆盖。AI 叙述按 standard 的语言/模板可配。
+- **验收**：可单独刷新；去掉 AI 段报告数字不变；换 standard 时叙述模板随之变化。
 
 ### 3.2 前端 P1 任务（依赖 T-FE-* 与后端契约）
 
 | 任务 | 组件 | 要点 |
 |---|---|---|
-| T-FE-10 新建会话向导 | `pages/AgentNewSession.tsx` | 选项目/设备档案 + 条款树（复用 ClausesApi.tree，章节全选）+ 授权工具 → create → 跳详情 |
+| T-FE-10 新建会话向导 | `pages/AgentNewSession.tsx` | **先选法规标准（standards 列表，不硬编码 EN18031）**，再选该标准下的条款树（复用 ClausesApi.tree，章节全选）+ 设备档案 + 授权工具 → create → 跳详情 |
 | T-FE-11 会话页 + 时间线 | `pages/AgentSessionDetail.tsx`、`PhaseHeader`、`useAgentSession`(useReducer+socket) | 接真实事件；A/B/C/D 分组；当前阶段高亮；运行中 loading |
 | T-FE-12 工具调用卡片 | `components/agent/ToolCallCard.tsx` | 工具名/入参(折叠 JSON)/输出(复用 Terminal，按 toolCall 收 stdout chunk，结束用 tool_result 对账)/退出码/耗时/证据链接；失败可重试 |
 | T-FE-13 人工步骤卡片 | `components/agent/HumanStepCard.tsx` | 琥珀色边框+脉冲；instruction(Markdown)+expectedOutcome+参考命令+EvidenceUploader；"完成并继续"/"我遇到问题"；waiting_human 时置顶+标题闪烁；强制证据时禁用按钮 |
@@ -234,7 +251,9 @@ P0/P1 是本次实施范围，P2/P3 仅备忘。
 >
 > **CSV 列**：机制、适用 part、技术要求项目（clauseId+中英标题）、requirement 原文、项目需被测试的条件、评估对象、概念评估、功能完整性评估、功能充分性评估、涉及工具。导入时把"概念/功能完整性/功能充分性"合并为 `testingMethod`，requirement 原文存 `description`。
 >
-> 系统 `EN18031:2019` 标准下已有这些族缩写条款的骨架（部分 testingMethod 为空），也有一套旧的 5.x 编号条款（早期原型，agent-guided 会话**不使用**）。T-BE-05 的导入脚本负责把 CSV 内容 upsert 进现有族缩写条款。**不要新建 5.3-6/7/8 这类臆造编号**。
+> 系统 `EN18031:2019` 标准下已有这些族缩写条款的骨架（部分 testingMethod 为空），也有一套旧的 5.x 编号条款（早期原型，agent-guided 会话**不使用**）。T-BE-05 的**通用 CSV 导入器**负责把 EN18031 CSV 内容 upsert 进现有族缩写条款；以后加 CRA 等新法规模型一样走这个导入器（配列映射即可），不改代码。**不要新建 5.3-6/7/8 这类臆造编号**。
+>
+> **clauses 表建议加 `applicableParts TEXT DEFAULT '[]'`**（JSON 数组，记录 -1/-2/-3），把"适用哪个 part"从 level 里解耦，便于多法规/多 part 扩展。
 
 ### 4.1 扩展现有表
 
@@ -254,7 +273,12 @@ clauseId TEXT; functionModule TEXT; sourceStepType TEXT; mimeType TEXT;
 
 -- projects
 mode TEXT NOT NULL DEFAULT 'template';
+
+-- clauses（加在迁移 8，支持多 part/多法规）
+applicableParts TEXT NOT NULL DEFAULT '[]';  -- JSON 数组，如 ["-1","-2","-3"]
 ```
+
+> 所有 `standardVersion` 都是字符串（`EN18031:2019`、`CRA:1.0`…），代码不解析法规特定语义；grade/判定由按 standard 注册的策略处理（T-BE-19）。
 
 ### 4.2 新表（要点）
 
@@ -355,6 +379,7 @@ BEGIN SELECT RAISE(ABORT,'verdict only in adjudication phase'); END;
 | 证据外发合规 | `ai.dataSharing.sendFiles=false`（固件/pcap 不传），只传截断摘要；二期本地模型 |
 | 阶段边界被绕过 | 应用层 service 单一入口 + DB 触发器兜底；无证据 verdict 自动 skipped |
 | 高危命令误触 | Agent 路径不暴露裸 shell；高危工具审批；命令工具试跑后才沉淀 |
+| 法规/设备绑死 | standard/clause/grading/skill 全部数据驱动，代码不识别具体条款号或设备型号；加新法规=建 standard+CSV 导入+grading 策略，加新设备=写 skill；验收包含"换法规/换设备不改代码" |
 | 角色权限 | 一期即打开 `AuthzService.assertRole`（本地配置版）；审核/跳过/skill 审批按角色禁用按钮+后端强校验 |
 
 ---
@@ -362,7 +387,7 @@ BEGIN SELECT RAISE(ABORT,'verdict only in adjudication phase'); END;
 ## 9. 人员与并行建议
 
 - **P0**：后端 1 人（T-BE-01~05）、前端 1 人（T-FE-01~05）、测试 0.5 人（T-QA-*）并行；第 3 天对齐 API 契约（OpenAPI/类型即契约）。
-- **P1**：后端按 T-BE-10→11→12→13→14→15→16→17→18→19 串行走（前 4 个可与前端 T-FE-10/11 并行）；前端按 T-FE-10→20 依赖顺序；测试在 P1 后半段进入集成/E2E。
+- **P1**：后端按 T-BE-10→11→12→13→14→15→16→17→18→19→20 串行走（前 4 个可与前端 T-FE-10/11 并行）；前端按 T-FE-10→20 依赖顺序；测试在 P1 后半段进入集成/E2E。
 - 每日用内存库 + FakeAiProvider 跑一次端到端脚本，避免最后集成爆炸。
 
 ---
@@ -378,4 +403,43 @@ BEGIN SELECT RAISE(ABORT,'verdict only in adjudication phase'); END;
 - [ ] 知识库：写笔记→AI 编译 skill 草稿→人审核→新会话检索命中。
 - [ ] 所有动作在 agent_events（seq 连续）+ audit_logs 可回放；append-only 表 UPDATE/DELETE 被拒。
 - [ ] AI 不可用时主流程（手动编排/执行/报告）不受影响。
+- [ ] **普适性验证**：
+  - 代码里无 `'EN18031:2019'`/`'GEC'`/`'ACM'` 等法规或条款族的硬编码业务分支（常量/数据不算）；
+  - 通用 CSV 导入器能导入一个非 EN18031 的小样例法规（≥3 条条款，不同列名）并在会话里被选中；
+  - grading 策略按 standard 可换，加一个 mock 标准不改代码能产出不同 grade；
+  - 新建一个不同型号设备的会话（无对应 skill 时）能正常走完或给出明确"缺 skill"提示，而不是报错或套用 Z6s 步骤。
 - [ ] 单测 + 集成 + E2E（mock）全绿；现有测试不回归。
+
+---
+
+## 11. 普适性与自我增强（贯穿所有阶段的设计约束）
+
+这是产品长期价值的核心，不是某一期的功能，而是所有代码必须遵守的约束：
+
+### 11.1 多法规（不绑 EN18031）
+- `standards`/`clauses` 已是通用模型；新增法规 = 新建 standard + 通用 CSV 导入 + （可选）新 grading 策略，**不改业务代码**。
+- 所有"当前标准"来自用户会话/项目选择，全链路传递；路由默认值不允许隐式 fallback 到 EN18031。
+- 机制族缩写（GEC/ACM/AUM）是 EN18031 的**数据**，不是代码枚举。
+- 报告模板、AI prompt 按 standard 可配置；不同法规的报告结构/定级规则通过 GradingStrategy + 模板注入。
+
+### 11.2 多设备（不绑 Z6s）
+- 设备差异由 **skill 知识库 + 设备档案**消化：新设备 = 人写经验笔记 → AI 编译成 skill → Agent 检索后动态生成 A/B 步骤，不改代码。
+- skill 标签维度：品牌、型号/系列、芯片平台、设备类型、功能模块、适用条款；检索按标签 + 关键词（P2 向量）。
+- 工具是通用能力（nmap/tcpdump/binwalk/串口…），不绑定设备；设备专属操作走"人工步骤 + 参考命令"。
+- 没有匹配 skill 时，Agent 应明确告知"缺少该设备经验，建议补充笔记/人工接管"，而不是瞎编步骤。
+
+### 11.3 案例驱动的自我增强闭环
+```
+工程师做案例 → 有效做法/踩坑/人工修正
+      ↓ (沉淀通知提醒)
+写经验笔记(note) → AI 编译成 skill 草稿 → 人审核入库
+      ↓
+后续相似设备/条款 → Agent 检索命中 skill → 步骤更准
+      ↓
+新案例再沉淀 → skill 版本迭代 → 平台越来越强
+```
+- P1：note→skill 编译 + 沉淀通知 + 关键词检索。
+- P2：案例完成后 AI 自动提炼经验增量（人确认）、向量语义检索、"基于此案例新建会话"。
+- skill 版本化、可回滚、记录来源案例/note，保证增强可追溯、可纠错。
+- **人始终在环**：AI 只能提议沉淀，人审核后才生效；错误经验不会自动污染后续判定。
+
