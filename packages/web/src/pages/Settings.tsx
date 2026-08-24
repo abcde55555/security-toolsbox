@@ -43,8 +43,8 @@ const DEFAULT_FORM: AiProviderForm = {
 };
 
 const PROTOCOL_OPTIONS = [
-  { value: 'openai', label: 'OpenAI 兼容（DeepSeek / vLLM / Ollama / Moonshot 等）' },
-  { value: 'anthropic', label: 'Anthropic（Claude，预留）' },
+  { value: 'openai', label: 'OpenAI 兼容（DeepSeek / OpenAI / vLLM / Ollama / Moonshot 等）' },
+  { value: 'anthropic', label: 'Anthropic（Claude，messages API）' },
 ];
 
 // Quick-start presets for common providers.
@@ -62,6 +62,13 @@ const PRESETS: Record<string, Partial<AiProviderForm>> = {
     baseUrl: 'https://api.openai.com/v1',
     planningModel: 'gpt-4o',
     narrativeModel: 'gpt-4o-mini',
+  },
+  anthropic: {
+    name: 'Anthropic Claude',
+    protocol: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    planningModel: 'claude-sonnet-4-5-20250929',
+    narrativeModel: 'claude-haiku-4-5-20251001',
   },
   ollama: {
     name: 'Ollama（本地）',
@@ -367,6 +374,7 @@ function Dropdown({ preset }: { preset: (key: string) => void }) {
   const items = [
     { key: 'deepseek', label: 'DeepSeek' },
     { key: 'openai', label: 'OpenAI' },
+    { key: 'anthropic', label: 'Anthropic Claude' },
     { key: 'moonshot', label: 'Moonshot Kimi' },
     { key: 'ollama', label: 'Ollama（本地）' },
     { key: 'vllm', label: 'vLLM（本地）' },

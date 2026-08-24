@@ -60,8 +60,9 @@ export interface StreamChunk {
 export interface ChatOptions {
   model?: string;
   temperature?: number;
+  maxTokens?: number;
   tools?: ToolSchema[];
-  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
   signal?: AbortSignal;
   timeoutMs?: number;
 }
