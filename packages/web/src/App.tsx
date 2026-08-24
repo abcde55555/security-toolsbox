@@ -1,5 +1,5 @@
 import { Layout, Menu } from 'antd';
-import { AppstoreOutlined, ProfileOutlined, ExperimentOutlined, HistoryOutlined, SafetyCertificateOutlined, RobotOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ProfileOutlined, ExperimentOutlined, HistoryOutlined, SafetyCertificateOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import ToolLibrary from './pages/ToolLibrary';
 import Templates from './pages/Templates';
@@ -10,6 +10,7 @@ import Clauses from './pages/Clauses';
 import AgentSessions from './pages/AgentSessions';
 import AgentNewSession from './pages/AgentNewSession';
 import AgentSessionDetail from './pages/AgentSessionDetail';
+import Settings from './pages/Settings';
 
 const { Header, Content } = Layout;
 
@@ -20,6 +21,7 @@ const navItems = [
   { key: '/projects', icon: <ExperimentOutlined />, label: '项目' },
   { key: '/agent', icon: <RobotOutlined />, label: 'Agent 测试' },
   { key: '/runs', icon: <HistoryOutlined />, label: '执行记录' },
+  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
 export default function App() {
@@ -55,6 +57,7 @@ export default function App() {
           <Route path="/agent" element={<AgentSessions />} />
           <Route path="/agent/new" element={<AgentNewSession />} />
           <Route path="/agent/:sessionId" element={<AgentSessionDetail />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/runs" element={<CommandRuns />} />
           <Route path="*" element={<Navigate to="/projects" replace />} />
         </Routes>

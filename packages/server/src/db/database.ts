@@ -562,6 +562,17 @@ const MIGRATIONS: {
       }
     },
   },
+  {
+    id: 9,
+    name: 'settings_table',
+    sql: `
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    `,
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

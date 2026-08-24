@@ -11,6 +11,7 @@ import { StandardRepository } from './standardRepository.js';
 import { CategoryRepository } from './categoryRepository.js';
 import { AgentRepository } from './agentRepository.js';
 import { ArtifactRepository } from './artifactRepository.js';
+import { SettingRepository } from './settingRepository.js';
 
 export interface Repositories {
   audit: AuditRepository;
@@ -25,6 +26,7 @@ export interface Repositories {
   categories: CategoryRepository;
   agent: AgentRepository;
   artifacts: ArtifactRepository;
+  settings: SettingRepository;
 }
 
 let repos: Repositories | null = null;
@@ -45,6 +47,7 @@ export function getRepositories(): Repositories {
     categories: new CategoryRepository(db),
     agent: new AgentRepository(db),
     artifacts: new ArtifactRepository(db),
+    settings: new SettingRepository(db),
   };
   return repos;
 }
@@ -64,6 +67,7 @@ export function createInMemoryRepositories(): { repos: Repositories; close: () =
     categories: new CategoryRepository(db),
     agent: new AgentRepository(db),
     artifacts: new ArtifactRepository(db),
+    settings: new SettingRepository(db),
   };
   return { repos: r, close: () => db.close() };
 }

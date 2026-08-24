@@ -9,6 +9,22 @@ import {
   type StreamChunk,
   type ToolCall,
 } from './types.js';
+import type { SettingRepository } from '../../repositories/settingRepository.js';
+
+// Lazily resolve the settings repo to avoid a circular import
+// (repositories -> agentService -> deepseekProvider -> repositories).
+let settingsRepo: SettingRepository | null = null;
+async function getSettings(): Promise<SettingRepository | null> {
+  if (settingsRepo) return settingsRepo;
+  try {
+    const mod = await import('../../repositories/index.js');
+    settingsRepo = mod.getRepositories().settings;
+    return settingsRepo;
+  } catch (err) {
+    logger.warn({ err }, 'settings repository unavailable');
+    return null;
+  }
+}
 
 interface UpstreamMessage {
   role: string;
@@ -330,18 +346,38 @@ export class DeepSeekProvider implements AiProvider {
   }
 }
 
-/** Build the configured provider, or null when AI is disabled / no key. */
-export function createDeepSeekProvider(): DeepSeekProvider | null {
+/** Resolve runtime config: DB active provider overrides env. Synchronous-ish via lazy cache. */
+async function resolveConfig() {
+  let { baseUrl, apiKey, timeoutMs, maxRetries, planningModel } = config.ai;
+  const settings = await getSettings();
+  const active = settings?.getActiveProvider();
+  if (active) {
+    baseUrl = active.baseUrl || baseUrl;
+    apiKey = active.apiKey || apiKey;
+    timeoutMs = active.timeoutMs || timeoutMs;
+    maxRetries = active.maxRetries ?? maxRetries;
+    planningModel = active.planningModel || planningModel;
+  }
+  return { baseUrl, apiKey, timeoutMs, maxRetries, planningModel };
+}
+
+/**
+ * Build the configured provider, or null when AI is disabled / no key.
+ * Returns a Promise now because DB settings are read asynchronously; callers
+ * in the agent loop already await provider construction.
+ */
+export async function createDeepSeekProvider(): Promise<DeepSeekProvider | null> {
   if (!config.ai.enabled) return null;
-  if (!config.ai.apiKey) {
-    logger.warn('AI_ENABLED=true but DEEPSEEK_API_KEY is empty; AI provider unavailable');
+  const { baseUrl, apiKey, timeoutMs, maxRetries, planningModel } = await resolveConfig();
+  if (!apiKey) {
+    logger.warn('AI_ENABLED=true but no API key configured; AI provider unavailable');
     return null;
   }
   return new DeepSeekProvider({
-    baseUrl: config.ai.baseUrl,
-    apiKey: config.ai.apiKey,
-    timeoutMs: config.ai.timeoutMs,
-    maxRetries: config.ai.maxRetries,
-    defaultModel: config.ai.planningModel,
+    baseUrl,
+    apiKey,
+    timeoutMs,
+    maxRetries,
+    defaultModel: planningModel,
   });
 }

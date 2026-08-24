@@ -16,6 +16,7 @@ import type {
   Artifact,
   AgentPhase,
   AgentSessionStatus,
+  AiProviderConfig,
 } from '@en18031/shared';
 
 export interface StepRunDetail extends StepRun {
@@ -492,4 +493,33 @@ export const ReportsApi = {
     `/api/projects/${projectId}/reports/${reportId}/download`,
   jsonUrl: (projectId: string, reportId: string) =>
     `/api/projects/${projectId}/reports/${reportId}/json`,
+};
+
+// ===== AI Provider / Settings =====
+
+export interface AiProviderForm {
+  id?: string;
+  name: string;
+  protocol: 'openai' | 'anthropic';
+  baseUrl: string;
+  apiKey?: string;
+  planningModel: string;
+  narrativeModel: string;
+  timeoutMs: number;
+  maxRetries: number;
+  isActive: boolean;
+}
+
+export const SettingsApi = {
+  listProviders: () =>
+    api.get<{ providers: AiProviderConfig[]; activeId?: string }>('/settings/ai/providers'),
+  saveProvider: (body: AiProviderForm) => api.post<AiProviderConfig>('/settings/ai/providers', body),
+  activate: (id: string) =>
+    api.post<AiProviderConfig>(`/settings/ai/providers/${id}/activate`),
+  remove: (id: string) => api.del<{ deleted: boolean }>(`/settings/ai/providers/${id}`),
+  test: (id?: string) =>
+    api.post<{ ok: boolean; latencyMs?: number; model?: string; sample?: string; message?: string }>(
+      '/settings/ai/providers/test',
+      { id },
+    ),
 };

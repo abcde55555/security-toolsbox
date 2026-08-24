@@ -41,7 +41,9 @@ export class AgentService {
     private readonly moduleLoader: ModuleLoader,
     private readonly bus: EventEmitter,
   ) {
-    this.aiProvider = createDeepSeekProvider();
+    // Provider is built lazily (and refreshed) so that DB settings added
+    // after startup take effect.
+    this.aiProvider = null;
   }
 
   /** Inject a scripted provider (for tests / AI-disabled environments). */
@@ -49,19 +51,25 @@ export class AgentService {
     this.scriptedProvider = provider;
   }
 
-  private resolveProvider(session: AgentSession): AiProvider {
+  private async resolveProvider(): Promise<AiProvider> {
     if (this.scriptedProvider) return this.scriptedProvider;
+    // Re-read config each call so settings-page changes apply without restart.
+    const fresh = await createDeepSeekProvider();
+    if (fresh) {
+      this.aiProvider = fresh;
+      return fresh;
+    }
     if (this.aiProvider) return this.aiProvider;
     throw new AppError(
       9005,
-      'AI 未启用或未配置 API Key，无法启动 Agent 会话。请配置 DEEPSEEK_API_KEY 并设置 AI_ENABLED=true，或使用测试用 ScriptedAiProvider。',
+      'AI 未启用或未配置 API Key。请在"设置"中添加大模型供应商并设为启用，或配置 DEEPSEEK_API_KEY。',
       undefined,
       503,
     );
   }
 
   get isAiEnabled(): boolean {
-    return this.aiProvider !== null;
+    return this.aiProvider !== null || this.scriptedProvider !== null;
   }
 
   createSession(input: CreateSessionInput): AgentSession {
@@ -119,7 +127,7 @@ export class AgentService {
     return this.repos.projects.listAgentStepRuns(sessionId);
   }
 
-  start(sessionId: string, userId: string, opts: { message?: string } = {}): void {
+  async start(sessionId: string, userId: string, opts: { message?: string } = {}): Promise<void> {
     const session = this.getSession(sessionId);
     if (this.running.has(sessionId)) {
       throw new AppError(9005, '会话已在运行中', undefined, 409);
@@ -131,7 +139,7 @@ export class AgentService {
     const projectRunId = session.projectRunId;
     if (!projectRunId) throw new AppError(9999, '会话缺少 projectRunId');
 
-    const provider = this.resolveProvider(session);
+    const provider = await this.resolveProvider();
 
     const rootController = new AbortController();
     const deps: AgentLoopDeps = {
