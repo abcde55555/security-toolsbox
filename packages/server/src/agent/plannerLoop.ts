@@ -166,21 +166,24 @@ export function runPlannerLoop(
         const assistantMsg = result.message;
         messages.push(assistantMsg);
 
-        emit({
-          type: 'model_message',
-          role: 'assistant',
-          content: assistantMsg.content ?? undefined,
-          model: result.model,
-          promptTokens: result.usage?.promptTokens,
-          completionTokens: result.usage?.completionTokens,
-          latencyMs: result.latencyMs,
-        });
         if (assistantMsg.content) {
+          // 携带持久化事件身份（id/seq），前端按 id 去重防止多通道叠影
+          const ev = emit({
+            type: 'model_message',
+            role: 'assistant',
+            content: assistantMsg.content ?? undefined,
+            model: result.model,
+            promptTokens: result.usage?.promptTokens,
+            completionTokens: result.usage?.completionTokens,
+            latencyMs: result.latencyMs,
+          });
           forward({
             event: 'agent:message',
             sessionId: state.session.id,
             role: 'assistant',
             content: assistantMsg.content,
+            id: ev.id,
+            seq: ev.seq,
           });
         }
 

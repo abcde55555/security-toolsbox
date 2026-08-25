@@ -37,7 +37,7 @@ export type AgentAction =
   | { type: 'artifact'; a: Artifact }
   | { type: 'verdict'; v: VerdictDraft }
   | { type: 'verdict_updated'; v: Partial<VerdictDraft> & { id: string } }
-  | { type: 'message'; role: string; content: string; seq?: number }
+  | { type: 'message'; role: string; content: string; seq?: number; id?: string }
   | { type: 'progress'; stepRunId: string; percent?: number; message?: string }
   | { type: 'error'; message: string; stepRunId?: string }
   | { type: 'done'; status: string }
@@ -356,8 +356,23 @@ export function reducer(state: AgentSessionState, action: AgentAction): AgentSes
       const verdicts = state.verdicts.map((v) => (v.id === action.v.id ? { ...v, ...action.v } : v));
       return { ...state, verdicts };
     }
-    case 'message':
-      return applyMessage(state, action.role, action.content, action.seq);
+    case 'message': {
+      // 按 id 幂等：同一事件可能经 socket(多连接)/回补/乐观路径重复到达
+      if (action.id && state.events.some((e) => e.id === action.id)) return state;
+      let ns = applyMessage(state, action.role, action.content, action.seq);
+      if (action.id) {
+        const synthetic: AgentEvent = {
+          id: action.id,
+          seq: action.seq ?? ns.lastSeq + 1,
+          sessionId: state.session?.id ?? '',
+          type: action.role === 'user' ? 'user_message' : 'model_message',
+          role: action.role,
+          content: action.content,
+        } as unknown as AgentEvent;
+        ns = { ...ns, events: [...ns.events, synthetic] };
+      }
+      return ns;
+    }
     case 'progress':
       return state; // progress is surfaced inside cards via their own status; no global state needed
     case 'error':
@@ -500,7 +515,7 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
     onArtifactWritten: (a) => dispatch({ type: 'artifact', a }),
     onVerdictDrafted: (v) => dispatch({ type: 'verdict', v }),
     onVerdictUpdated: (v) => dispatch({ type: 'verdict_updated', v }),
-    onMessage: (p) => { dispatch({ type: 'message', role: p.role, content: p.content, seq: p.seq }); },
+    onMessage: (p) => { dispatch({ type: 'message', role: p.role, content: p.content, seq: p.seq, id: p.id }); },
     onError: (p) => dispatch({ type: 'error', message: p.message }),
     onDone: (p) => dispatch({ type: 'done', status: p.status }),
   };
@@ -561,7 +576,7 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
 
   const sendMessage = useCallback(async (content: string) => {
     if (!sessionId || !content.trim()) return;
-    dispatch({ type: 'message', role: 'user', content });
+    // 不做乐观本地追加：服务端落库后经 agent:message 回显（带事件 id，前端按 id 去重）
     await AgentApi.sendMessage(sessionId, content);
   }, [sessionId]);
 

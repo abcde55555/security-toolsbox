@@ -30,7 +30,7 @@ export type AgentBusEvent =
   | { event: 'agent:evidence_attached'; sessionId: string; evidence: { id: string; type: string; content: string; functionModule?: string; clauseId?: string } }
   | { event: 'agent:artifact_written'; sessionId: string; artifact: Artifact }
   | { event: 'agent:verdict_drafted'; sessionId: string; verdict: ClauseVerdict }
-  | { event: 'agent:message'; sessionId: string; role: 'assistant' | 'user'; content: string }
+  | { event: 'agent:message'; sessionId: string; role: 'assistant' | 'user'; content: string; id?: string; seq?: number }
   | { event: 'agent:progress'; sessionId: string; stepRunId: string; percent: number; message?: string }
   | { event: 'agent:error'; sessionId: string; message: string; stepRunId?: string }
   | { event: 'agent:done'; sessionId: string; status: string };

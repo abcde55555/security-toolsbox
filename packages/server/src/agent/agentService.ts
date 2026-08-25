@@ -209,7 +209,7 @@ export class AgentService {
       role: 'user',
       content,
     });
-    this.bus.emit('agent:message', { sessionId, role: 'user', content });
+    this.bus.emit('agent:message', { sessionId, role: 'user', content, id: ev.id, seq: ev.seq });
     this.repos.audit.insert({
       userId,
       action: 'agent.message',
@@ -338,8 +338,8 @@ export class AgentService {
     if (session.status === 'done' || session.status === 'error') {
       this.repos.agent.updateStatus(sessionId, 'planning', '人工退回补采重开会话');
     }
-    this.repos.agent.createEvent({ sessionId, type: 'user_message', role: 'user', content: guidance });
-    this.bus.emit('agent:message', { sessionId, role: 'user', content: guidance });
+    const gev = this.repos.agent.createEvent({ sessionId, type: 'user_message', role: 'user', content: guidance });
+    this.bus.emit('agent:message', { sessionId, role: 'user', content: guidance, id: gev.id, seq: gev.seq });
     this.repos.audit.insert({
       userId,
       action: 'agent.retry_clause',

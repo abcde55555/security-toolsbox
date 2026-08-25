@@ -117,7 +117,7 @@ export interface AgentSessionHandlers {
   onArtifactWritten?: (a: Artifact) => void;
   onVerdictDrafted?: (v: VerdictDraft) => void;
   onVerdictUpdated?: (v: Partial<VerdictDraft> & { id: string }) => void;
-  onMessage?: (p: { role: string; content: string; seq?: number }) => void;
+  onMessage?: (p: { role: string; content: string; seq?: number; id?: string }) => void;
   onWaitingConfirm?: (p: { request: { targetPhase: string; reason?: string } }) => void;
   onProgress?: (p: { stepRunId: string; percent?: number; message?: string }) => void;
   onError?: (p: { message: string; stepRunId?: string }) => void;
