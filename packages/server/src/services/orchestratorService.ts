@@ -16,6 +16,7 @@ import type { CancelToken } from '@en18031/shared';
 import { ClauseMappingService } from './clauseMappingService.js';
 import { evaluateStepVerdict, aggregateClause } from './verdictEvaluator.js';
 import { executeWithRetry, clampAttempts, DEFAULT_RETRY_BACKOFF_MS } from './stepRetry.js';
+import { expandSteps } from './stepExpansion.js';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -104,7 +105,13 @@ export class OrchestratorService {
     });
 
     this.ctx.repos.projects.setStatus(projectId, 'running');
-    for (const step of steps) {
+    // v0.5：expandMode 运行时展开——先展开再建 step_run，后续调度/聚合全部基于实例
+    const expansion = expandSteps(steps, variables);
+    const effectiveSteps = expansion.steps;
+    for (const note of expansion.notes) {
+      this.ctx.bus.emit('run:logLine', { projectId, runId: run.id, line: `[展开] ${note}` });
+    }
+    for (const step of effectiveSteps) {
       this.ctx.repos.projects.createStepRun({
         projectRunId: run.id,
         stepId: step.stepId,
@@ -120,11 +127,11 @@ export class OrchestratorService {
       action: 'run.start',
       entityType: 'project_run',
       entityId: run.id,
-      after: { projectId, stepCount: steps.length },
+      after: { projectId, stepCount: steps.length, expandedStepCount: effectiveSteps.length },
     });
 
     if (template.mode === 'compliance') this.initComplianceRun(run.id);
-    void this.executeRun(run.id, projectId, template.id, steps, variables, templateDefaults, options.concurrencyOverride ?? template.concurrencyLimit)
+    void this.executeRun(run.id, projectId, template.id, effectiveSteps, variables, templateDefaults, options.concurrencyOverride ?? template.concurrencyLimit)
       .catch((err) => logger.error({ err, runId: run.id }, 'executeRun rejected'));
     return this.ctx.repos.projects.getRun(run.id)!;
   }

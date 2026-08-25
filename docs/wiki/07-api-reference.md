@@ -219,6 +219,11 @@ GET    /api/agent/artifacts?sessionId=|projectId= 工件查询
 不报错、不区分流式/非流式。实测该行为同样命中 Agent 规划循环的系统提示词风格。
 
 - 检测工具：`packages/server/scripts/ai-diagnose.mts`（4 类探针给出结论）；
+- **v0.5 实测对照**：opencode zen（https://opencode.ai/zen/v1，openai 协议，x-preview-f-free）
+  **无内容过滤**——GATT/nmap/tool_calls 全部正常；但为推理型模型，reasoning_content 计入 max_tokens
+  预算，预算过小同样表现为"空正文"（finish=length），需在 Provider 配置 maxTokens ≥8000；
+  偶发上游 502（Upstream request failed），Provider 自带重试覆盖。另注意区分两种空正文成因：
+  网关过滤（火山）vs 推理预算耗尽（本节新风险）。
 - 平台侧兜底：skill 编译与叙述报告均「重试 1 次 + maxTokens 16384 + 失败降级」（编译降级为原文封装草稿、
   叙述保持缺失可手动再生成），Agent 循环的空响应由既有容错路径处理；
 - 根治方案：在设置页将激活供应商切换为常规 LLM 端点（官方 DeepSeek / 火山方舟 `/api/v3` openai 协议 /

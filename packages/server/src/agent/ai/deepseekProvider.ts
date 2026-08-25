@@ -234,6 +234,8 @@ export class DeepSeekProvider implements AiProvider {
       maxRetries: number;
       defaultModel: string;
       protocol?: 'openai' | 'anthropic';
+      /** 未显式传 maxTokens 时使用的默认预算（推理型模型建议 ≥8000） */
+      defaultMaxTokens?: number;
     },
   ) {}
 
@@ -301,7 +303,7 @@ export class DeepSeekProvider implements AiProvider {
       const { system, messages: amsgs } = toAnthropic(messages);
       const body: Record<string, unknown> = {
         model,
-        max_tokens: options.maxTokens ?? 4096,
+        max_tokens: options.maxTokens ?? this.opts.defaultMaxTokens ?? 4096,
         messages: amsgs,
         stream,
       };
@@ -325,6 +327,7 @@ export class DeepSeekProvider implements AiProvider {
     };
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
+    else if (this.opts.defaultMaxTokens) body.max_tokens = this.opts.defaultMaxTokens;
     if (options.tools?.length) {
       body.tools = options.tools;
       body.tool_choice = options.toolChoice ?? 'auto';
@@ -657,6 +660,7 @@ export class DeepSeekProvider implements AiProvider {
 async function resolveConfig() {
   let { baseUrl, apiKey, timeoutMs, maxRetries, planningModel } = config.ai;
   let protocol: 'openai' | 'anthropic' = 'openai';
+  let maxTokens: number | undefined;
   const settings = await getSettings();
   const active = settings?.getActiveProvider();
   if (active) {
@@ -666,8 +670,9 @@ async function resolveConfig() {
     maxRetries = active.maxRetries ?? maxRetries;
     planningModel = active.planningModel || planningModel;
     protocol = active.protocol;
+    maxTokens = active.maxTokens;
   }
-  return { baseUrl, apiKey, timeoutMs, maxRetries, planningModel, protocol };
+  return { baseUrl, apiKey, timeoutMs, maxRetries, planningModel, protocol, maxTokens };
 }
 
 /** Build the configured provider, or null when AI is disabled / no key. */
@@ -677,7 +682,7 @@ export async function createDeepSeekProvider(): Promise<DeepSeekProvider | null>
   const settings = await getSettings();
   const active = settings?.getActiveProvider();
   if (!config.ai.enabled && !active?.apiKey) return null;
-  const { baseUrl, apiKey, timeoutMs, maxRetries, planningModel, protocol } = await resolveConfig();
+  const { baseUrl, apiKey, timeoutMs, maxRetries, planningModel, protocol, maxTokens } = await resolveConfig();
   if (!apiKey) {
     logger.warn('AI enabled but no API key configured (set AI_ENABLED or add an active provider in Settings); AI provider unavailable');
     return null;
@@ -689,5 +694,6 @@ export async function createDeepSeekProvider(): Promise<DeepSeekProvider | null>
     maxRetries,
     defaultModel: planningModel,
     protocol,
+    defaultMaxTokens: maxTokens,
   });
 }

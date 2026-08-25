@@ -23,6 +23,7 @@ export async function createActiveAiProvider(
       maxRetries: row.maxRetries,
       defaultModel: model,
       protocol: row.protocol,
+      defaultMaxTokens: row.maxTokens,
     }),
     model,
   };

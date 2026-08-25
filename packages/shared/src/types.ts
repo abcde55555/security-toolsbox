@@ -319,6 +319,13 @@ export interface TemplateStep {
   exportVars?: Record<string, ExportVarRule>;
   weight?: number;
   expandMode?: 'cartesian' | 'for_each_json';
+  /**
+   * for_each_json 展开源：取该**项目变量**（数组或 JSON 数组字符串）逐项展开，
+   * 每项注入实例变量 item（元素）与 index（0 起序号）。v0.5 起真实生效。
+   */
+  expandSource?: string;
+  /** cartesian 展开：参与笛卡尔积的项目变量名列表，元素同时以变量名与 item.<名> 暴露。 */
+  expandDims?: string[];
   ephemeral?: boolean;
   position: number;
   /** Clause this step contributes to. NULL in ad-hoc mode. */
@@ -737,6 +744,11 @@ export interface AiProviderConfig {
   timeoutMs: number;
   /** Max retries on 429/5xx. */
   maxRetries: number;
+  /**
+   * 每次请求的默认 max_tokens（可选）。推理型模型（reasoning_content 计入预算）
+   * 需要给大（建议 ≥8000），否则思考耗尽预算导致空正文。
+   */
+  maxTokens?: number;
   /** Whether this provider is the active one. */
   isActive: boolean;
   /** Whether the key passes a format/length sanity check (not an auth test). */

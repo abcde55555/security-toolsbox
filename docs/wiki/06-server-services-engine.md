@@ -143,7 +143,7 @@ create/update/delete（builtin 只读禁改禁删；删除前 countReferences �
 | `aggregateClause(agg, signals, skipped, results?)` | cross_check：any_pass/any_fail/majority(**平票按失败**)/all_pass 投票，失败严重度取最重(sevRank)；chain：有 skipped 直接 fail；**v0.4 起 results（stepId→ExecutionResult）由 orchestrator 传入，finalVerdict 条件真正参与求值**，不传时保持旧兜底 |
 | `evaluateChainFinal(rule, results, skipped)` | FinalCondition 三型求值（exit_code eq/ne；contains/regex 支持 negate） |
 
-> 实现现状备注：~~chain finalVerdict 空 Map 未求值~~、~~step.retry/retryBackoffMs 未被自动消费~~ 均已于 v0.4 解决——orchestratorService 新增 complianceResults 缓存并传入聚合；executeSingleStep 经 stepRetry.executeWithRetry 消费 retry 配置（仅 fail/timeout 重试、线性退避 backoff×次数、上限钳 5、重试轨迹写入证据链）。仍留边界：`expandMode`(cartesian/for_each_json) 仅建模存储未实现展开。
+> 实现现状备注：~~chain finalVerdict 空 Map 未求值~~、~~step.retry/retryBackoffMs 未被自动消费~~ 均已于 v0.4 解决——orchestratorService 新增 complianceResults 缓存并传入聚合；executeSingleStep 经 stepRetry.executeWithRetry 消费 retry 配置（仅 fail/timeout 重试、线性退避 backoff×次数、上限钳 5、重试轨迹写入证据链）。~~expandMode 仅建模存储~~ 已于 v0.5 解决：`stepExpansion.ts` 在 start 路径建 step_run 前做运行时展开——for_each_json 按 expandSource 变量（数组/JSON 数组字符串）逐项生成实例并注入 `{{item}}/{{item.字段}}/{{index}}`；cartesian 对 expandDims 各变量做笛卡尔积（元素同时以变量名与 item.<名> 暴露）；实例 stepId=`原id#k`、groupKey 加 `#i<k>` 后缀防折叠；依赖按序号配对上游实例；单步上限 100 截断；展开说明经 run:logLine 写入时间线。
 
 ## 4. 事件与落盘约定小结
 
