@@ -95,7 +95,8 @@ export default function AgentNewSession() {
     return n;
   }, [tree]);
 
-  const canNext = step === 0 ? !!standardId : step === 1 ? checked.length > 0 : true;
+  // 条款允许全不选：创建后由 Agent 与用户对话确认测试范围（见步骤内提示）
+  const canNext = step === 0 ? !!standardId : true;
 
   const create = async () => {
     try {
@@ -164,10 +165,14 @@ export default function AgentNewSession() {
         {step === 1 && (
           <Spin spinning={loadingTree}>
             <Alert
-              type="info"
+              type={checked.length === 0 ? 'warning' : 'info'}
               showIcon
               style={{ marginBottom: 12 }}
-              message={`勾选要测试的条款（共 ${leafCount} 个叶子条款，已选 ${checked.length} 个）。勾选父节点会选中其下所有叶子条款。`}
+              message={
+                checked.length === 0
+                  ? '当前未选择任何条款——可以直接进入下一步，创建后 Agent 会先与你确认测试范围；也可以现在勾选，Agent 将直接按所选条款执行。'
+                  : `勾选要测试的条款（共 ${leafCount} 个叶子条款，已选 ${checked.length} 个）。勾选父节点会选中其下所有叶子条款。`
+              }
             />
             {tree.length === 0 && !loadingTree ? (
               <Empty description="该标准下暂无条款" />

@@ -147,8 +147,11 @@ const AGENT_SOCKET_EVENTS = [
 ] as const;
 
 export function subscribeAgentSession(sessionId: string, handlers: AgentSessionHandlers): () => void {
-  const socket: Socket = io({ transports: ['websocket', 'polling'] });
-  socket.on('connect', () => socket.emit('subscribe', { room: `agent:${sessionId}` }));
+  // 服务端在 connection 时按握手 query ?sessionId= 加房；subscribe 消息体的
+  // sessionId 字段同样支持。此前只发 {room} 字段导致从未真正入房、实时事件
+  // 全靠轮询兜底——现在两条路径都带上 sessionId。
+  const socket: Socket = io({ transports: ['websocket', 'polling'], query: { sessionId } });
+  socket.on('connect', () => socket.emit('subscribe', { sessionId, room: `agent:${sessionId}` }));
 
   const dispatch: Record<string, ((p: never) => void) | undefined> = {
     'agent:session': handlers.onSession as (p: never) => void,

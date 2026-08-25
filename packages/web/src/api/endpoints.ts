@@ -451,11 +451,6 @@ export const AgentApi = {
   create: (body: CreateAgentSessionBody) => api.post<AgentSession>('/agent/sessions', body),
   start: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/start`, {}),
   abort: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/abort`, {}),
-  resume: (id: string) => api.post<AgentSession>(`/agent/sessions/${id}/resume`, {}),
-  advance: (id: string, body: { toPhase: AgentPhase; reason?: string }) =>
-    api.post<AgentSession>(`/agent/sessions/${id}/advance`, body),
-  rollback: (id: string, body: { toPhase: AgentPhase; reason?: string }) =>
-    api.post<AgentSession>(`/agent/sessions/${id}/rollback`, body),
   events: (id: string, sinceSeq = 0) =>
     api.get<AgentEvent[]>(`/agent/sessions/${id}/events?sinceSeq=${sinceSeq}`),
   steps: (id: string) => api.get<StepRun[]>(`/agent/sessions/${id}/steps`),
@@ -463,10 +458,25 @@ export const AgentApi = {
   createArtifact: (id: string, body: Partial<Artifact>) =>
     api.post<Artifact>(`/agent/sessions/${id}/artifacts`, body),
   verdicts: (id: string) => api.get<VerdictDraft[]>(`/agent/sessions/${id}/verdicts`),
-  reviewVerdict: (id: string, verdictId: string, body: { action: 'approve' | 'reject' | 'request_evidence'; reason?: string }) =>
-    api.post<VerdictDraft>(`/agent/sessions/${id}/verdicts/${verdictId}/review`, body),
+  /** 判定审核通过（后端全局路由，无需 sessionId） */
+  approveVerdict: (verdictId: string) =>
+    api.post<VerdictDraft>(`/agent/verdicts/${verdictId}/approve`, {}),
+  /** 驳回判定（必填理由）；如需退回补采请改用 retryClause */
+  rejectVerdict: (verdictId: string, reason: string) =>
+    api.post<VerdictDraft>(`/agent/verdicts/${verdictId}/reject`, { reason }),
   retryClause: (id: string, clauseId: string) =>
-    api.post<{ retriedStepRunIds: string[] }>(`/agent/sessions/${id}/clauses/${encodeURIComponent(clauseId)}/retry`, {}),
+    api.post<AgentSession>(
+      `/agent/sessions/${id}/clauses/${encodeURIComponent(clauseId)}/retry`,
+      {},
+    ),
+  /** 人工补充证据：fileRefs 为 /api/upload 返回的服务端路径 */
+  attachEvidence: (
+    id: string,
+    body: { fileRefs: string[]; functionModule?: string; clauseId?: string; note?: string },
+  ) => api.post<{ evidences: Array<{ id: string; type: string; content: string; fileRef?: string }> }>(
+    `/agent/sessions/${id}/evidence`,
+    body,
+  ),
   completeHumanStep: (id: string, stepRunId: string, body: CompleteHumanStepBody) =>
     api.post<StepRun>(`/agent/sessions/${id}/human-steps/${stepRunId}/complete`, body),
   sendMessage: (id: string, content: string) =>

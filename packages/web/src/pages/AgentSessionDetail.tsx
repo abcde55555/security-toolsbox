@@ -10,6 +10,7 @@ import ArtifactPanel from '../components/agent/ArtifactPanel';
 import VerdictReviewPanel from '../components/agent/VerdictReviewPanel';
 import AiTranscriptCollapse from '../components/agent/AiTranscriptCollapse';
 import type { UploadedEvidence } from '../components/agent/EvidenceUploader';
+import { AgentApi } from '../api/endpoints';
 
 const { Content, Sider } = Layout;
 
@@ -44,8 +45,25 @@ export default function AgentSessionDetail() {
   };
 
   const onAttachEvidence = async (files: UploadedEvidence[] | unknown[]) => {
-    // TODO(agent-backend): POST evidence to /agent/sessions/:id/evidence when available.
-    message.info(`已记录 ${files.length} 份证据（接入真实后端后自动关联会话）`);
+    if (!sessionId || sessionId === 'mock' || sessionId === 'mock-session') {
+      message.info(`演示模式：已记录 ${files.length} 份证据（不持久化）`);
+      return;
+    }
+    const refs = (files as UploadedEvidence[]).map((f) => f.fileRef).filter(Boolean) as string[];
+    if (refs.length === 0) {
+      message.warning('没有可关联的证据文件');
+      return;
+    }
+    try {
+      await AgentApi.attachEvidence(sessionId, {
+        fileRefs: refs,
+        functionModule: (files as UploadedEvidence[])[0]?.functionModule,
+        note: '人工补充证据',
+      });
+      message.success(`已上传并关联 ${refs.length} 份证据`);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '证据上送失败');
+    }
   };
 
   if (agent.loading) {

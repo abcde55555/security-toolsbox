@@ -565,15 +565,37 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
     await AgentApi.sendMessage(sessionId, content);
   }, [sessionId]);
 
-  const reviewVerdict = useCallback(async (verdictId: string, action: 'approve' | 'reject' | 'request_evidence', reason?: string) => {
-    if (!sessionId) return;
-    const v = await AgentApi.reviewVerdict(sessionId, verdictId, { action, reason });
-    dispatch({ type: 'verdict_updated', v: { ...v, id: verdictId } });
-  }, [sessionId]);
+  const reviewVerdict = useCallback(
+    async (verdictId: string, action: 'approve' | 'reject' | 'request_evidence', reason?: string) => {
+      if (!sessionId) return;
+      if (action === 'request_evidence') {
+        // 补采 = 退回 B 阶段按条款重跑：从本地判定表取 clauseId 调 retry 端点；
+        // 本地先标 skipped，会话回退/重启事件经 socket 到达后驱动其余状态。
+        const clauseId = state.verdicts.find((v) => v.id === verdictId)?.clauseId;
+        if (!clauseId) throw new Error('无法定位判定对应的条款');
+        await AgentApi.retryClause(sessionId, clauseId);
+        dispatch({
+          type: 'verdict_updated',
+          v: { id: verdictId, reviewStatus: 'skipped', reviewNote: reason || '已退回补采' },
+        });
+        return;
+      }
+      const v =
+        action === 'approve'
+          ? await AgentApi.approveVerdict(verdictId)
+          : await AgentApi.rejectVerdict(verdictId, reason ?? '');
+      dispatch({
+        type: 'verdict_updated',
+        v: { id: verdictId, reviewStatus: v.reviewStatus, reviewNote: v.reviewNote },
+      });
+    },
+    [sessionId, state.verdicts],
+  );
 
   const retryClause = useCallback(async (clauseId: string) => {
     if (!sessionId) return;
-    await AgentApi.retryClause(sessionId, clauseId);
+    const s = await AgentApi.retryClause(sessionId, clauseId);
+    dispatch({ type: 'session', patch: s });
   }, [sessionId]);
 
   const start = useCallback(async () => {
