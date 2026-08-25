@@ -309,6 +309,121 @@ export class AgentService {
     return this.repos.results.listPendingReviewVerdictsByProject(projectId);
   }
 
+  /**
+   * 人工退回补采：把会话拉回 collection 阶段并附带针对条款的补采指令，
+   * 随后重启规划循环（模型经 advance_phase 合法回退语义继续工作）。
+   * 会话正在运行时拒绝——避免与在途循环的内存状态打架；等它结束再退回。
+   */
+  async retryClause(sessionId: string, clauseId: string, userId: string): Promise<AgentSession> {
+    const session = this.getSession(sessionId);
+    if (this.running.has(sessionId)) {
+      throw new AppError(9005, '会话正在运行中，请等待本轮结束或先中止后再退回补采', undefined, 409);
+    }
+    if (!session.selectedClauses.includes(clauseId)) {
+      throw new AppError(9003, `条款 ${clauseId} 不在本会话的测试范围内`);
+    }
+    const guidance = `【人工退回补采】条款 ${clauseId} 的判定被工程师退回。请在 collection 阶段围绕该条款补充采集证据，完成后重新进入 adjudication 为该条款重新提交判定。`;
+
+    const from = session.phase;
+    if (from === 'adjudication' || from === 'review') {
+      this.repos.agent.updatePhase(sessionId, 'collection');
+      this.repos.agent.incrementRollback(sessionId);
+      this.repos.agent.createEvent({
+        sessionId,
+        type: 'phase_change',
+        content: JSON.stringify({ from, to: 'collection', reason: `条款 ${clauseId} 退回补采` }),
+      });
+      this.bus.emit('agent:phase', { sessionId, from, to: 'collection', isRollback: true });
+    }
+    if (session.status === 'done' || session.status === 'error') {
+      this.repos.agent.updateStatus(sessionId, 'planning', '人工退回补采重开会话');
+    }
+    this.repos.agent.createEvent({ sessionId, type: 'user_message', role: 'user', content: guidance });
+    this.bus.emit('agent:message', { sessionId, role: 'user', content: guidance });
+    this.repos.audit.insert({
+      userId,
+      action: 'agent.retry_clause',
+      entityType: 'agent_session',
+      entityId: sessionId,
+      after: { clauseId, fromPhase: from },
+    });
+    await this.start(sessionId, userId, { message: guidance });
+    return this.repos.agent.getSession(sessionId)!;
+  }
+
+  /**
+   * 人工补充证据：文件先经 /api/upload 落盘，这里把引用挂到会话级合成步骤
+   * （stepType=evidence_attach）并广播 agent:evidence_attached。
+   */
+  attachEvidence(
+    sessionId: string,
+    input: { fileRefs: string[]; functionModule?: string; clauseId?: string; note?: string },
+    userId: string,
+  ): Array<{ id: string; type: string; content: string; fileRef?: string; functionModule?: string; clauseId?: string }> {
+    const session = this.getSession(sessionId);
+    const projectRunId = session.projectRunId;
+    if (!projectRunId) throw new AppError(9999, '会话缺少 projectRunId');
+    const refs = (input.fileRefs ?? []).filter((r) => typeof r === 'string' && r.trim());
+    if (refs.length === 0) throw new AppError(9003, '至少提供一个证据文件引用');
+
+    // 复用/创建本会话的"人工补充证据"合成步骤，满足 evidences.stepRunId NOT NULL
+    const stepId = `manual-evidence-${sessionId.slice(0, 8)}`;
+    let step = this.repos.projects
+      .listAgentStepRuns(sessionId)
+      .find((s) => s.stepId === stepId);
+    if (!step) {
+      step = this.repos.projects.createAgentStepRun({
+        projectRunId,
+        stepId,
+        stepSnapshot: { title: '人工补充证据', source: 'manual-upload' },
+        stepType: 'evidence_attach',
+        phase: session.phase,
+        agentSessionId: sessionId,
+      });
+    }
+
+    const created = refs.map((ref) => {
+      const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(ref);
+      const fileName = ref.split('/').pop() ?? ref;
+      const row = this.repos.results.insertEvidence({
+        stepRunId: step!.id,
+        projectRunId,
+        projectId: session.projectId,
+        type: isImage ? 'screenshot' : 'file_pointer',
+        content: input.note?.trim() || fileName,
+        fileRef: ref,
+        severity: 'low',
+        clauseId: input.clauseId,
+        functionModule: input.functionModule,
+        sourceStepType: 'evidence_attach',
+      });
+      const view = {
+        id: row.id,
+        type: row.type,
+        content: row.content,
+        fileRef: row.fileRef,
+        functionModule: row.functionModule,
+        clauseId: row.clauseId,
+      };
+      this.bus.emit('agent:evidence_attached', { sessionId, evidence: view });
+      return view;
+    });
+
+    this.repos.audit.insert({
+      userId,
+      action: 'agent.evidence_attach',
+      entityType: 'agent_session',
+      entityId: sessionId,
+      after: { count: created.length, clauseId: input.clauseId },
+    });
+    return created;
+  }
+
+  /** Resolve when the session's planning loop (if any) settles. Useful for tests & graceful shutdown. */
+  whenIdle(sessionId: string): Promise<void> {
+    return this.running.get(sessionId)?.promise ?? Promise.resolve();
+  }
+
   /** Test/diagnostic helper: current timestamp. */
   now(): string {
     return nowIso();

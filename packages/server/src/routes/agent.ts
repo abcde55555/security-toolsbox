@@ -47,6 +47,13 @@ const rejectSchema = z.object({
   reason: z.string().min(1),
 });
 
+const evidenceSchema = z.object({
+  fileRefs: z.array(z.string().min(1)).min(1),
+  functionModule: z.string().optional(),
+  clauseId: z.string().optional(),
+  note: z.string().max(500).optional(),
+});
+
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // ---- Sessions ----
   app.post('/api/agent/sessions', { preHandler: requireRole('auditor') }, async (req, reply) => {
@@ -206,6 +213,39 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         createdBy: user?.id ?? 'local-admin',
       });
       ok(reply, artifact);
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
+  // ---- 人工退回补采 / 人工补充证据 ----
+  /** Roll the session back to collection and restart planning for one clause. */
+  app.post(
+    '/api/agent/sessions/:id/clauses/:clauseId/retry',
+    { preHandler: requireRole('auditor') },
+    async (req, reply) => {
+      try {
+        const { id, clauseId } = req.params as { id: string; clauseId: string };
+        const user = (req as FastifyRequest & { user?: { id: string } }).user;
+        const session = await getServices().agent.retryClause(
+          id,
+          decodeURIComponent(clauseId),
+          user?.id ?? 'local-admin',
+        );
+        ok(reply, session);
+      } catch (e) {
+        handleError(reply, e);
+      }
+    },
+  );
+
+  /** Attach manually uploaded files as session evidence (refs from /api/upload). */
+  app.post('/api/agent/sessions/:id/evidence', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      const body = parseBody(evidenceSchema, req.body);
+      const user = (req as FastifyRequest & { user?: { id: string } }).user;
+      ok(reply, { evidences: getServices().agent.attachEvidence(id, body, user?.id ?? 'local-admin') });
     } catch (e) {
       handleError(reply, e);
     }

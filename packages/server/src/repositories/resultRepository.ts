@@ -75,6 +75,11 @@ export class ResultRepository {
       hash: r.hash ? String(r.hash) : undefined,
       severity: r.severity as Evidence['severity'],
       createdAt: String(r.createdAt),
+      // Agent 扩展列（此前读取时被丢弃，导致人工证据/条款关联丢失）
+      clauseId: r.clauseId ? String(r.clauseId) : undefined,
+      functionModule: r.functionModule ? String(r.functionModule) : undefined,
+      sourceStepType: r.sourceStepType ? String(r.sourceStepType) : undefined,
+      mimeType: r.mimeType ? String(r.mimeType) : undefined,
     };
   }
 
