@@ -38,6 +38,7 @@ onboarding(0) ──前进──▶ collection(1) ──前进──▶ adjudica
 - **sendMessage**：落库 user_message 事件；状态为 planning/waiting_confirm 时自动续跑循环。
 - **retryClause（v0.3 人工退回补采）**：校验条款在范围内、会话非运行中（运行中 409，避免与在途循环内存状态打架）；phase∈{adjudication,review} 时 updatePhase 回 collection + incrementRollback + 广播 `agent:phase {isRollback:true}`；done/error 重开为 planning；注入「【人工退回补采】条款 X…」指令后 `start()` 带消息重启循环。单测见 agentRetryClause.test.ts。
 - **attachEvidence（v0.3 人工补充证据）**：复用/创建会话级合成步骤（stepId=`manual-evidence-<sessionId前8位>`，stepType='evidence_attach'）以满足 evidences.stepRunId NOT NULL；按扩展名判 screenshot/file_pointer 落行并逐条广播 `agent:evidence_attached`。配套修复：mapEvidence 此前丢弃 Agent 扩展列（clauseId/functionModule/sourceStepType/mimeType），读回即丢——已补全。
+- **叶子条款引导（v0.6）**：adjudication 提示词追加 ADJUDICATION_LEAF_NOTE、create_verdict 工具描述注明 clauseId 必须为叶子条款、handler 检测父项（有子项）时在结果中附 warning——三层引导确保 AI 判定落在计入报告的条款上。
 - **WS 加房实测（v0.5）**：agent 房间握手 query 修复后以真实会话抓帧验证——6 分钟窗口收到 33 帧 / 9 类 agent:* 事件（session/message/tool_call/tool_result/step_started/artifact_written/human_step_requested/human_step_completed/phase），实时链路不再依赖轮询兜底。run 房间字段核对结论：前后端本就一致（{runId} ↔ payload.runId），无需改动。
 - whenIdle(sessionId)：等待该会话规划循环落定（测试与优雅关停用）。
 

@@ -103,7 +103,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     function: {
       name: 'create_verdict',
       description:
-        '在裁定阶段提交某条款的判定草案。只能引用已收集的证据ID；通过/失败与严重度由系统根据证据确定性计算，AI 仅可补充 comment。草案需人工审核通过后才进入合规定级。',
+        '在裁定阶段提交某条款的判定草案。clauseId 必须是叶子条款（无子项）——章节父项的判定不计入合规定级报告。只能引用已收集的证据ID；通过/失败与严重度由系统根据证据确定性计算，AI 仅可补充 comment。草案需人工审核通过后才进入合规定级。',
       parameters: {
         type: 'object',
         properties: {

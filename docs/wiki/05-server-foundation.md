@@ -88,6 +88,7 @@ pino 单例：development 走 `pino-pretty`（彩色，HH:MM:ss），其他环�
 | v8 | agent_human_machine_collab | agent_sessions/agent_events/artifacts 表 + step_runs、clause_verdicts、evidences、projects、clauses 的 Agent 扩展列 + **clause_verdicts_phase_guard 触发器** |
 | v9 | settings_table | settings 键值表 |
 | v10 | knowledge_skills_notifications | knowledge_notes / skills / notifications 三表 + reports.narrative 列（AI 叙述报告） |
+| v11 | template_step_expand_config | template_steps 补 expandSource / expandDims 列（PRAGMA 幂等守卫 + 表存在性守卫，v0.5 起展开配置真正可持久化） |
 
 > **phase_guard 触发器**是架构亮点：当 step_run 属于某 Agent 会话且该会话 phase≠'adjudication' 时，判定 INSERT 被 SQLite 引擎层拒绝 —— 把「只有裁定阶段能出结论」这条业务红线下沉到数据库。
 

@@ -37,6 +37,16 @@ export async function createVerdict(ctx: AgentToolContext, args: CreateVerdictAr
   const clause = deps.repos.clauses.get(project.standardVersion, args.clauseId);
   if (!clause) return toolError(`条款不存在: ${args.clauseId}`);
 
+  // 叶子条款软校验：章节父项（有子项）的判定不会计入合规定级报告。
+  // 不硬拒绝——父项结论可作为审计留痕，但明确告知模型应改投叶子条款。
+  const childCount = deps.repos.clauses
+    .list(project.standardVersion)
+    .filter((c) => c.parentId === args.clauseId).length;
+  const parentWarning =
+    childCount > 0
+      ? ` 注意：条款 ${args.clauseId} 是章节父项（含 ${childCount} 个子项），本判定不会计入合规报告的通过率统计；请为叶子条款（如 ${args.clauseId}-x）另行提交判定。`
+      : '';
+
   const evidenceRefs = args.evidenceRefs ?? [];
   // Validate evidence ownership and collect severities / failure signals.
   const allEvidence = deps.repos.results
@@ -113,7 +123,15 @@ export async function createVerdict(ctx: AgentToolContext, args: CreateVerdictAr
 
   return {
     content: JSON.stringify(
-      { verdictId: verdict.id, clauseId: args.clauseId, pass, severity, reviewStatus: 'pending_review', reason },
+      {
+        verdictId: verdict.id,
+        clauseId: args.clauseId,
+        pass,
+        severity,
+        reviewStatus: 'pending_review',
+        reason,
+        ...(parentWarning ? { warning: parentWarning.trim() } : {}),
+      },
       null,
       2,
     ),

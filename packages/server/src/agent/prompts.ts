@@ -1,5 +1,8 @@
 import type { AgentPhase, AgentSession, Clause, Skill } from '@en18031/shared';
 
+const ADJUDICATION_LEAF_NOTE =
+  '重要：create_verdict 的 clauseId 必须使用「叶子条款」（没有子项的条款）。章节父项（如 5.1 含子项 5.1-1）的判定不会计入合规定级报告——请把判定落在叶子条款上；若认为父项整体有结论，写进 comment。';
+
 const PHASE_GUIDE: Record<AgentPhase, string> = {
   onboarding:
     '阶段A 接入建档：确认设备信息与测试环境，必要时用 plan_human_step 引导操作员完成物理接入/进入测试模式，用 write_artifact 记录设备档案(device_profile)与网络拓扑(network_topology)。完成后调用 advance_phase 进入 collection。',
@@ -44,6 +47,7 @@ export function buildSystemPrompt(input: {
     '',
     `当前阶段：${session.phase}`,
     PHASE_GUIDE[session.phase],
+    session.phase === 'adjudication' ? ADJUDICATION_LEAF_NOTE : '',
     '',
     '设备档案：',
     device,

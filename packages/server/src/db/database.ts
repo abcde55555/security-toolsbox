@@ -644,6 +644,30 @@ const MIGRATIONS: {
       }
     },
   },
+  {
+    id: 11,
+    name: 'template_step_expand_config',
+    sql: '',
+    // template_steps 在 v1 就存在，但幂等守卫可让该迁移在任何历史库上安全执行
+    run: (database) => {
+      const hasTable = (
+        database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='template_steps'").all() as unknown[]
+      ).length > 0;
+      if (!hasTable) return; // 极早期测试库无此表：真实库 v1 已建，跳过即可
+      const cols = (database.prepare('PRAGMA table_info(template_steps)').all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      const tx = database.transaction(() => {
+        if (!cols.includes('expandSource')) {
+          database.exec('ALTER TABLE template_steps ADD COLUMN expandSource TEXT');
+        }
+        if (!cols.includes('expandDims')) {
+          database.exec('ALTER TABLE template_steps ADD COLUMN expandDims TEXT');
+        }
+      });
+      tx();
+    },
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

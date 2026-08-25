@@ -93,8 +93,8 @@ export class TemplateRepository {
       .prepare(
         `INSERT INTO template_steps (id, templateId, stepId, title, toolId, toolVersion, interactionModeOverride,
           params, selectedCommands, dependsOn, onFailure, retry, retryBackoffMs, timeoutMs, exportVars, weight,
-          expandMode, ephemeral, position, clauseId, verdictRule, groupKey)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          expandMode, expandSource, expandDims, ephemeral, position, clauseId, verdictRule, groupKey)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         uuid(),
@@ -114,6 +114,8 @@ export class TemplateRepository {
         step.exportVars ? toJson(step.exportVars) : null,
         step.weight ?? 1,
         step.expandMode ?? 'cartesian',
+        step.expandSource ?? null,
+        step.expandDims ? toJson(step.expandDims) : null,
         step.ephemeral ? 1 : 0,
         step.position ?? 0,
         step.clauseId ?? null,
@@ -177,7 +179,13 @@ export class TemplateRepository {
           ? (parseJson(s.exportVars, {}) as TemplateStep['exportVars'])
           : undefined,
         weight: Number(s.weight),
-        expandMode: String(s.expandMode) as TemplateStep['expandMode'],
+        expandMode: s.expandMode
+          ? (String(s.expandMode) as TemplateStep['expandMode'])
+          : undefined,
+        expandSource: s.expandSource ? String(s.expandSource) : undefined,
+        expandDims: s.expandDims
+          ? (parseJson<string[]>(s.expandDims, []) as TemplateStep['expandDims'])
+          : undefined,
         ephemeral: Boolean(s.ephemeral),
         position: Number(s.position),
         clauseId: s.clauseId ? String(s.clauseId) : null,
