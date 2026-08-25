@@ -110,7 +110,7 @@ Vite：端口 **5173**，`/api` 与 `/socket.io`(ws) 代理到 `127.0.0.1:3000`�
 
 ## 7. 已知留白（客观记录）
 
-- `AgentApi` 中 resume/advance/rollback/sessions/:id/verdicts/review/clause retry 等调用对应的后端端点尚未实现（服务端 routes/agent.ts 无此路由）；
-- `onAttachEvidence`（AgentSessionDetail 证据上送）为 TODO；EvidenceAttachCard 的会话持久化端点 TODO；
-- mock 体系（mockSession/useMockAgentSession/?mock=1）是后端并行开发期的临时通道，代码内有明确 `TODO(agent-backend)` 注释；
-- 前端 `subscribe {room:'agent:...'}` 与服务端读取 `payload.sessionId` 存在字段名不一致，实际加房依赖握手 query 或由事件全局广播兜底。
+- ~~resume/advance/rollback/review/retryClause 契约错位~~（v0.3 已解决：死方法 resume/advance/rollback 已删除；reviewVerdict 拆分为全局 approve/reject 路由；retryClause 后端已实现并被「退回补采」动作使用）；
+- ~~onAttachEvidence TODO~~（v0.3 已实现：真实上传走 `POST /agent/sessions/:id/evidence`，fileRefs 为 /api/upload 返回路径；mock 会话仅本地提示）；
+- mock 体系（mockSession/useMockAgentSession/?mock=1）是后端并行开发期的临时通道，代码内仍有 `TODO(agent-backend)` 注释；
+- ~~subscribe 字段不一致~~（v0.3 已修复：socket 握手携带 `query:{sessionId}`，subscribe 消息体同时带 sessionId+room，agent 房间真正生效，实时事件不再纯靠轮询兜底）。

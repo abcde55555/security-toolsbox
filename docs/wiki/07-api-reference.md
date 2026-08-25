@@ -169,6 +169,8 @@ POST   /api/agent/sessions/:id/human-steps/:stepRunId/complete   完成人工步
 GET    /api/agent/projects/:projectId/pending-verdicts           待审判定
 POST   /api/agent/verdicts/:verdictId/approve    通过判定
 POST   /api/agent/verdicts/:verdictId/reject     驳回判定（需 reason）
+POST   /api/agent/sessions/:id/clauses/:clauseId/retry   人工退回补采：回拉 collection 并带指令重启循环（运行中 409）
+POST   /api/agent/sessions/:id/evidence          人工补充证据 `{fileRefs[],functionModule?,clauseId?,note?}` → 挂合成 evidence_attach 步骤
 POST   /api/agent/artifacts                      直建工件
 GET    /api/agent/artifacts?sessionId=|projectId= 工件查询
 ```

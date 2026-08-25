@@ -36,6 +36,9 @@ onboarding(0) ──前进──▶ collection(1) ──前进──▶ adjudica
 - **start**：运行中重复启动 409；终态 409；`resolveProvider()` 每次重建 Provider（设置页改动免重启生效），无可用 Provider 抛 503 提示配置 Key；组装 `AgentLoopDeps{repos, engine, moduleLoader, bus, provider, coordinator, signal, userId, maxIterations, humanStepTimeoutMs}` 后 `runPlannerLoop()` 得到 `RunSessionHandle{sessionId, promise, abort}` 存入 running 表。
 - **abort**：有句柄则 `handle.abort()`（AbortController 链）；空闲挂起态则 `coordinator.abortAll()` + finish(id,'aborted')；广播 `agent:done {status:'aborted'}`。
 - **sendMessage**：落库 user_message 事件；状态为 planning/waiting_confirm 时自动续跑循环。
+- **retryClause（v0.3 人工退回补采）**：校验条款在范围内、会话非运行中（运行中 409，避免与在途循环内存状态打架）；phase∈{adjudication,review} 时 updatePhase 回 collection + incrementRollback + 广播 `agent:phase {isRollback:true}`；done/error 重开为 planning；注入「【人工退回补采】条款 X…」指令后 `start()` 带消息重启循环。单测见 agentRetryClause.test.ts。
+- **attachEvidence（v0.3 人工补充证据）**：复用/创建会话级合成步骤（stepId=`manual-evidence-<sessionId前8位>`，stepType='evidence_attach'）以满足 evidences.stepRunId NOT NULL；按扩展名判 screenshot/file_pointer 落行并逐条广播 `agent:evidence_attached`。配套修复：mapEvidence 此前丢弃 Agent 扩展列（clauseId/functionModule/sourceStepType/mimeType），读回即丢——已补全。
+- **whenIdle(sessionId)**：等待该会话规划循环落定（测试与优雅关停用）。
 
 会话状态机（AGENT_SESSION_STATUSES）：`planning → running → waiting_human → waiting_confirm → review → done`，终态 aborted/error。
 

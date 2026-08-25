@@ -313,6 +313,23 @@ export class ReportService {
     ]);
     summary.getRow(1).font = { bold: true };
 
+    // AI 叙述（若已生成）作为独立工作表导出
+    if (report.narrative?.trim()) {
+      const narrative = wb.addWorksheet('AI 叙述报告');
+      narrative.getColumn(1).width = 110;
+      const rows = report.narrative.trim().split('\n');
+      for (const line of rows) {
+        const r = narrative.addRow([line]);
+        const cell = r.getCell(1);
+        if (/^##/.test(line.trim())) {
+          cell.font = { bold: true, size: 12 };
+        } else if (/^#/.test(line.trim())) {
+          cell.font = { bold: true, size: 14 };
+        }
+        cell.alignment = { wrapText: true, vertical: 'top' };
+      }
+    }
+
     const clauses = wb.addWorksheet('条款判定详情');
     clauses.columns = [
       { header: '条款编号', key: 'clauseId', width: 14 },
