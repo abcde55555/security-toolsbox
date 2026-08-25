@@ -172,7 +172,7 @@ async function bootstrap(): Promise<void> {
     'agent:session', 'agent:phase', 'agent:step_started', 'agent:tool_call',
     'agent:tool_output', 'agent:tool_result', 'agent:human_step_requested',
     'agent:human_step_completed', 'agent:evidence_attached', 'agent:artifact_written',
-    'agent:verdict_drafted', 'agent:verdict_updated', 'agent:message',
+    'agent:verdict_drafted', 'agent:verdict_updated', 'agent:message', 'agent:message_delta',
     'agent:waiting_confirm', 'agent:progress', 'agent:error', 'agent:done',
   ] as const;
   for (const event of AGENT_EVENTS) {

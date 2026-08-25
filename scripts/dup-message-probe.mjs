@@ -20,6 +20,10 @@ await fetch(`${BASE}/api/agent/sessions/${sid}/start`, { method: 'POST' }).then(
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+let wsDeltas = 0;
+page.on('websocket', (ws) => ws.on('framereceived', (f) => {
+  if (String(f?.payload ?? '').includes('message_delta')) wsDeltas++;
+}));
 await page.goto(`${BASE}/agent/${sid}`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 
@@ -32,6 +36,11 @@ await page.locator('button:has([class*="send"]), button:has-text("发送")').fir
 
 // 等模型回完（轮询状态到 done 或 90s 超时）
 let status = '';
+let sawStreaming = false;
+// 高频捕捉流式指示条（生成窗口可能只有几秒）
+const domTimer = setInterval(() => {
+  page.getByText('正在生成').count().then((c) => { if (c > 0) sawStreaming = true; }).catch(() => {});
+}, 300);
 for (let i = 0; i < 18; i++) {
   await page.waitForTimeout(5000);
   const st = await page.evaluate(async (s) => {
@@ -39,10 +48,12 @@ for (let i = 0; i < 18; i++) {
     return d.data.status;
   }, sid);
   if (st !== status) { console.log(`[${i * 5}s] ${st}`); status = st; }
+  if (await page.getByText('正在生成').count()) sawStreaming = true;
   if (['done', 'error', 'aborted', 'waiting_human'].includes(st)) break;
 }
 
 await page.waitForTimeout(2000); // 让 socket/回补全部落定
+clearInterval(domTimer);
 
 // 精确计数：服务端每条消息的唯一前缀在 DOM 中应恰好出现 1 次
 const verdict = await page.evaluate(async (sid) => {
@@ -58,6 +69,7 @@ const verdict = await page.evaluate(async (sid) => {
   });
 }, sid);
 console.log('DOM 出现次数（期望各=1）:', JSON.stringify(verdict, null, 1));
+console.log(`流式指示条出现: ${sawStreaming ? '是' : '否'} | 流式 delta 帧: ${wsDeltas}`);
 const bad = verdict.filter((v) => v.copies !== 1);
 console.log(bad.length === 0 ? '✅ 无重复渲染' : `❌ ${bad.length} 条消息出现叠影`);
 await page.screenshot({ path: '/tmp/e2e-shots/11-dup-probe.png' }).catch(() => {});

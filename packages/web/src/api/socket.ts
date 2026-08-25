@@ -118,6 +118,7 @@ export interface AgentSessionHandlers {
   onVerdictDrafted?: (v: VerdictDraft) => void;
   onVerdictUpdated?: (v: Partial<VerdictDraft> & { id: string }) => void;
   onMessage?: (p: { role: string; content: string; seq?: number; id?: string }) => void;
+  onMessageDelta?: (p: { messageId: string; delta: string }) => void;
   onWaitingConfirm?: (p: { request: { targetPhase: string; reason?: string } }) => void;
   onProgress?: (p: { stepRunId: string; percent?: number; message?: string }) => void;
   onError?: (p: { message: string; stepRunId?: string }) => void;
@@ -140,6 +141,7 @@ const AGENT_SOCKET_EVENTS = [
   'agent:verdict_drafted',
   'agent:verdict_updated',
   'agent:message',
+  'agent:message_delta',
   'agent:waiting_confirm',
   'agent:progress',
   'agent:error',
@@ -167,6 +169,7 @@ export function subscribeAgentSession(sessionId: string, handlers: AgentSessionH
     'agent:verdict_drafted': handlers.onVerdictDrafted as (p: never) => void,
     'agent:verdict_updated': handlers.onVerdictUpdated as (p: never) => void,
     'agent:message': handlers.onMessage as (p: never) => void,
+    'agent:message_delta': handlers.onMessageDelta as (p: never) => void,
     'agent:waiting_confirm': handlers.onWaitingConfirm as (p: never) => void,
     'agent:progress': handlers.onProgress as (p: never) => void,
     'agent:error': handlers.onError as (p: never) => void,

@@ -645,6 +645,23 @@ const MIGRATIONS: {
     },
   },
   {
+    id: 12,
+    name: 'agent_memories',
+    sql: `
+    CREATE TABLE IF NOT EXISTS agent_memories (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL DEFAULT 'session',
+      sessionId TEXT,
+      content TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'llm_extract',
+      importance INTEGER NOT NULL DEFAULT 3,
+      createdAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_memories_scope ON agent_memories(scope, importance);
+    CREATE INDEX IF NOT EXISTS idx_agent_memories_session ON agent_memories(sessionId);
+    `,
+  },
+  {
     id: 11,
     name: 'template_step_expand_config',
     sql: '',

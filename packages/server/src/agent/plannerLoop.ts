@@ -3,6 +3,7 @@ import { logger } from '../logger.js';
 import type { AgentBusEvent, AgentLoopDeps, EmitEventInput, AgentToolContext } from './agentContext.js';
 import { assertTransition } from './phaseMachine.js';
 import { dispatchTool, TOOL_SCHEMAS } from './toolBridge.js';
+import { extractMemories } from './memoryExtractor.js';
 import { buildSystemPrompt } from './prompts.js';
 import { notify } from '../services/notificationService.js';
 import type { ChatMessage, ToolCall } from './ai/types.js';
@@ -42,6 +43,15 @@ export function runPlannerLoop(
     session: initialSession,
     phase: initialSession.phase,
     status: 'running',
+  };
+
+  /** 工具结果硬压缩：单条超过上限即截断并标记，防止历史轮次撑爆上下文 */
+  const compressToolMessage = (m: ChatMessage): ChatMessage => {
+    const LIMIT = 1500;
+    if (typeof m.content === 'string' && m.content.length > LIMIT) {
+      return { ...m, content: `${m.content.slice(0, LIMIT)}\n…[已截断，完整输出见对应步骤运行记录]` };
+    }
+    return m;
   };
 
   const emit = (input: EmitEventInput) => {
@@ -119,6 +129,15 @@ export function runPlannerLoop(
       const kickoff =
         opts.initialUserMessage?.trim() ||
         '开始本次合规测试会话：先确认设备档案与接入方式，然后规划并执行测试步骤。';
+      // 记忆注入：user 级偏好 + 本会话已有工作上下文，启动时取一次
+      let memoryLines: string[] = [];
+      try {
+        const mems = [
+          ...deps.repos.agentMemories.listUserMemories(6),
+          ...deps.repos.agentMemories.listBySession(state.session.id, 10),
+        ];
+        memoryLines = mems.map((m) => m.content);
+      } catch { /* 记忆库不可用不阻塞主流程 */ }
       messages.push({ role: 'user', content: kickoff });
       if (opts.initialUserMessage) {
         emit({ type: 'user_message', role: 'user', content: opts.initialUserMessage });
@@ -140,17 +159,34 @@ export function runPlannerLoop(
             clauses,
             authorizedTools: state.session.authorizedTools,
             skills: skillContext,
+            memories: memoryLines,
           }),
         };
 
         let result;
         try {
-          result = await deps.provider.chat(messages, {
-            model: state.session.planningModel,
-            tools: TOOL_SCHEMAS,
-            toolChoice: 'auto',
-            signal: controller.signal,
-          });
+          // 流式调用：文本增量实时推给前端（messageId 用于前端缓冲聚合），
+          // 工具调用仍由 provider 聚齐后在 result.toolCalls 中返回。
+          const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          result = await deps.provider.streamChat(
+            messages,
+            (chunk) => {
+              if (chunk.delta) {
+                forward({
+                  event: 'agent:message_delta',
+                  sessionId: state.session.id,
+                  messageId: streamMessageId,
+                  delta: chunk.delta,
+                });
+              }
+            },
+            {
+              model: state.session.planningModel,
+              tools: TOOL_SCHEMAS,
+              toolChoice: 'auto',
+              signal: controller.signal,
+            },
+          );
         } catch (err) {
           if (controller.signal.aborted) break;
           const msg = `AI 调用失败: ${(err as Error).message}`;
@@ -204,7 +240,7 @@ export function runPlannerLoop(
         for (const tc of toolCalls) {
           if (controller.signal.aborted) break;
           const toolMessage = await executeToolCall(ctx, tc, emit, forward, messages);
-          messages.push(toolMessage);
+          messages.push(compressToolMessage(toolMessage));
         }
       }
 
@@ -222,6 +258,8 @@ export function runPlannerLoop(
       deps.repos.agent.finish(state.session.id, finalStatus);
       state.status = finalStatus;
       if (finalStatus === 'done') {
+        // 记忆沉淀：非阻塞 LLM 提炼工作上下文与用户偏好（失败静默）
+        void extractMemories(deps, state.session.id).catch(() => {});
         // Non-blocking sedimentation nudge: a human decides whether this case
         // should be crystallized into skills/templates. Never blocks the run.
         try {

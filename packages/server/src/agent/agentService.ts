@@ -231,7 +231,7 @@ export class AgentService {
     input: { note?: string; fileRefs?: string[] },
     userId: string,
   ): void {
-    this.getSession(sessionId);
+    const session = this.getSession(sessionId);
     const stepRun = this.repos.projects.getStepRun(stepRunId);
     if (!stepRun || stepRun.agentSessionId !== sessionId) {
       throw new AppError(9004, '人工步骤不存在或不属于此会话', undefined, 404);
@@ -242,7 +242,64 @@ export class AgentService {
       completedBy: userId,
     });
     if (!ok) {
-      throw new AppError(9005, '该人工步骤不在等待状态（可能已完成或已超时）', undefined, 409);
+      // pending 表未命中 —— 三种情形分别处理，不再一律抛错：
+      const sr = this.repos.projects.getStepRun(stepRunId)!;
+      // ① 幂等：步骤已被（本次或他人）成功完成 → 静默成功
+      if (sr.status === 'success') {
+        this.repos.audit.insert({
+          userId,
+          action: 'agent.human_step_complete_duplicate',
+          entityType: 'step_run',
+          entityId: stepRunId,
+        });
+        return;
+      }
+      // ② 孤儿：服务重启导致内存等待表丢失、执行循环已不存在 →
+      //    把结果落库、明确告知执行链已中断（而非误导性的“不在等待状态”）
+      if (sr.stepType === 'human_instruction' && (sr.status === 'running' || sr.status === 'pending')) {
+        const fileRefs = input.fileRefs ?? [];
+        for (const fileRef of fileRefs) {
+          this.repos.results.insertEvidence({
+            stepRunId,
+            projectRunId: sr.projectRunId,
+            projectId: session.projectId,
+            type: 'file_pointer',
+            content: '人工步骤附件（恢复录入）',
+            fileRef,
+            severity: 'low',
+            sourceStepType: 'human_instruction',
+          });
+        }
+        this.repos.projects.updateStepRun(stepRunId, {
+          status: 'success',
+          percent: 100,
+          artifacts: fileRefs,
+          error: { code: 'ORPHANED_HUMAN_STEP', message: `结果已记录：${input.note ?? '(无说明)'}` } as never,
+        });
+        this.repos.agent.updateStatus(sessionId, 'error', '服务器重启导致执行链中断；人工步骤结果已保存，请重新启动会话继续');
+        this.bus.emit('agent:human_step_completed', {
+          event: 'agent:human_step_completed',
+          sessionId,
+          stepRunId,
+          fileRefs,
+          note: input.note,
+        });
+        this.bus.emit('agent:error', {
+          event: 'agent:error',
+          sessionId,
+          message: '检测到服务重启：人工步骤结果已保存，但原执行循环已中断，请重新启动会话继续',
+        });
+        this.repos.audit.insert({
+          userId,
+          action: 'agent.human_step_complete_orphan',
+          entityType: 'step_run',
+          entityId: stepRunId,
+          after: { fileCount: fileRefs.length, note: input.note },
+        });
+        return;
+      }
+      // ③ 其余（超时/失败/取消）维持原语义但给出更准确的文案
+      throw new AppError(9005, '该人工步骤已结束（已完成、超时或会话已中止）', undefined, 409);
     }
   }
 

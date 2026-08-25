@@ -18,6 +18,8 @@ export function buildSystemPrompt(input: {
   session: AgentSession;
   clauses: Clause[];
   authorizedTools: string[];
+  /** 记忆库注入：session 级工作上下文 + user 级偏好（按重要度截取） */
+  memories?: string[];
   /** Approved/current skills injected so past experience steers new sessions. */
   skills?: Skill[];
 }): string {
@@ -62,6 +64,13 @@ export function buildSystemPrompt(input: {
       ? `历史经验技能（可用 search_skills 查看全文；与本设备相关的应优先参考）：\n${skillList}`
       : '历史经验技能：（技能库暂为空，可用 search_skills 确认）',
     '',
+    ...(input.memories && input.memories.length > 0
+      ? [
+          '相关记忆（来自历史会话沉淀；与当前任务冲突时以当前会话为准）：',
+          ...input.memories.slice(0, 12).map((m) => `- ${m}`),
+          '',
+        ]
+      : []),
     '请用中文回复。优先用工具推进任务，必要时用简短文本向工程师说明下一步意图。',
     '当本次会话沉淀出可复用的测试经验时（review 阶段尤其适合），用 propose_skill 以非阻塞通知提议沉淀。',
   ].join('\n');

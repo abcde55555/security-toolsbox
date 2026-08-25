@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Layout, Space, Button, Tabs, Typography, Alert, Input, Tag, Spin, message } from 'antd';
-import { ArrowLeftOutlined, SendOutlined, StopOutlined, PlayCircleOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SendOutlined, StopOutlined, PlayCircleOutlined, ExperimentOutlined , LoadingOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAgentSession } from '../hooks/useAgentSession';
 import { useMockAgentSession } from '../hooks/useMockAgentSession';
@@ -114,7 +114,34 @@ export default function AgentSessionDetail() {
           />
         </div>
 
-        <AiTranscriptCollapse messages={agent.state.messages} />
+        {Object.values(agent.state.streaming).some((t) => t.length > 0) && (
+          <div
+            style={{
+              padding: '8px 14px',
+              background: '#f8fafc',
+              borderTop: '1px dashed #cbd5e1',
+              maxHeight: 140,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              fontSize: 13,
+              color: '#334155',
+            }}
+          >
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <LoadingOutlined spin /> 正在生成…
+            </Typography.Text>
+            <div>{Object.values(agent.state.streaming).join('')}</div>
+          </div>
+        )}
+        <AiTranscriptCollapse
+          messages={agent.state.messages}
+          phase={agent.state.session?.phase}
+          status={agent.state.session?.status}
+          stepCount={agent.state.steps.size}
+          runningSteps={[...agent.state.steps.values()].filter((st) => st.status === 'running').length}
+          evidenceCount={agent.state.evidences.length}
+          verdictCount={agent.state.verdicts.length}
+        />
 
         <div style={{ padding: '8px 12px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
           <Space.Compact style={{ width: '100%' }}>

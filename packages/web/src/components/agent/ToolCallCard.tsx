@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, Tag, Space, Typography, Collapse, Button, Tooltip } from 'antd';
 import {
   CodeOutlined,
@@ -39,6 +39,8 @@ export default function ToolCallCard({
 
   const running = tool.status === 'running' || !tool.status;
   const hasArgs = tool.args && Object.keys(tool.args).length > 0;
+  // 默认折叠：仅运行中的卡片自动展开输出区；点击可随时展开/收起
+  const [openKeys, setOpenKeys] = useState<string[]>(running ? ['output'] : []);
 
   return (
     <Card
@@ -61,25 +63,34 @@ export default function ToolCallCard({
         </Space>
       }
     >
-      {hasArgs && (
-        <Collapse
-          size="small"
-          ghost
-          defaultActiveKey={defaultOpen ? ['args'] : []}
-          items={[
-            {
-              key: 'args',
-              label: '入参',
-              children: (
-                <pre style={{ margin: 0, maxHeight: 200, overflow: 'auto', background: '#0f172a', color: '#e2e8f0', padding: 8, borderRadius: 4, fontSize: 12 }}>
-                  {JSON.stringify(tool.args, null, 2)}
-                </pre>
-              ),
-            },
-          ]}
-        />
-      )}
-      <Terminal lines={lines} height={180} empty={running ? '等待工具输出…' : '无输出'} truncated={lines.length > 1500} />
+      <Collapse
+        size="small"
+        ghost
+        activeKey={defaultOpen ? [...new Set([...openKeys, 'args', 'output'])] : openKeys}
+        onChange={(keys) => setOpenKeys(Array.isArray(keys) ? keys : [keys])}
+        items={[
+          ...(hasArgs
+            ? [
+                {
+                  key: 'args',
+                  label: <Typography.Text type="secondary" style={{ fontSize: 12 }}>入参</Typography.Text>,
+                  children: (
+                    <pre style={{ margin: 0, maxHeight: 200, overflow: 'auto', background: '#0f172a', color: '#e2e8f0', padding: 8, borderRadius: 4, fontSize: 12 }}>
+                      {JSON.stringify(tool.args, null, 2)}
+                    </pre>
+                  ),
+                },
+              ]
+            : []),
+          {
+            key: 'output',
+            label: <Typography.Text type="secondary" style={{ fontSize: 12 }}>输出{lines.length > 0 ? `（${lines.length} 行）` : ''}</Typography.Text>,
+            children: (
+              <Terminal lines={lines} height={180} empty={running ? '等待工具输出…' : '无输出'} truncated={lines.length > 1500} />
+            ),
+          },
+        ]}
+      />
       {tool.error?.message && (
         <Typography.Text type="danger" style={{ fontSize: 12 }}>
           {tool.error.message}

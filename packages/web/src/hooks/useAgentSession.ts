@@ -38,6 +38,7 @@ export type AgentAction =
   | { type: 'verdict'; v: VerdictDraft }
   | { type: 'verdict_updated'; v: Partial<VerdictDraft> & { id: string } }
   | { type: 'message'; role: string; content: string; seq?: number; id?: string }
+  | { type: 'message_delta'; messageId: string; delta: string }
   | { type: 'progress'; stepRunId: string; percent?: number; message?: string }
   | { type: 'error'; message: string; stepRunId?: string }
   | { type: 'done'; status: string }
@@ -59,6 +60,7 @@ export function initialState(): AgentSessionState {
     verdicts: [],
     phases: [],
     messages: [],
+    streaming: {},
     lastSeq: 0,
     orderCounter: 0,
     connected: false,
@@ -358,8 +360,13 @@ export function reducer(state: AgentSessionState, action: AgentAction): AgentSes
     }
     case 'message': {
       // 按 id 幂等：同一事件可能经 socket(多连接)/回补/乐观路径重复到达
-      if (action.id && state.events.some((e) => e.id === action.id)) return state;
-      let ns = applyMessage(state, action.role, action.content, action.seq);
+      if (action.id && state.events.some((e) => e.id === action.id)) {
+        return Object.keys(state.streaming).length > 0 ? { ...state, streaming: {} } : state;
+      }
+      // assistant 正式消息到达 → 清空流式缓冲
+      const cleared =
+        action.role === 'assistant' && Object.keys(state.streaming).length > 0 ? { streaming: {} } : {};
+      let ns = applyMessage({ ...state, ...cleared }, action.role, action.content, action.seq);
       if (action.id) {
         const synthetic: AgentEvent = {
           id: action.id,
@@ -382,6 +389,10 @@ export function reducer(state: AgentSessionState, action: AgentAction): AgentSes
         ...state,
         session: state.session ? { ...state.session, status: action.status as TAgentSession['status'], finishedAt: new Date().toISOString() } : state.session,
       };
+    case 'message_delta': {
+      const prev = state.streaming[action.messageId] ?? '';
+      return { ...state, streaming: { ...state.streaming, [action.messageId]: prev + action.delta } };
+    }
     case 'events_backfill': {
       const known = new Set(state.events.map((e) => e.id));
       const merged = [...state.events, ...action.events.filter((e) => !known.has(e.id))].sort((a, b) => a.seq - b.seq);
@@ -516,6 +527,7 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
     onVerdictDrafted: (v) => dispatch({ type: 'verdict', v }),
     onVerdictUpdated: (v) => dispatch({ type: 'verdict_updated', v }),
     onMessage: (p) => { dispatch({ type: 'message', role: p.role, content: p.content, seq: p.seq, id: p.id }); },
+    onMessageDelta: (p) => { dispatch({ type: 'message_delta', messageId: p.messageId, delta: p.delta }); },
     onError: (p) => dispatch({ type: 'error', message: p.message }),
     onDone: (p) => dispatch({ type: 'done', status: p.status }),
   };
@@ -566,11 +578,30 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
 
   const completeHumanStep = useCallback(async (stepRunId: string, body: Parameters<typeof AgentApi.completeHumanStep>[2]) => {
     if (!sessionId) return;
-    const step = await AgentApi.completeHumanStep(sessionId, stepRunId, body);
-    dispatch({ type: 'human_completed', stepRunId, fileRefs: body.fileRefs, outcome: body.outcome });
-    if (step) {
-      // keep step status in sync with backend response
-      dispatch({ type: 'step_started', stepRunId, stepType: 'human_instruction' });
+    try {
+      const step = await AgentApi.completeHumanStep(sessionId, stepRunId, body);
+      dispatch({ type: 'human_completed', stepRunId, fileRefs: body.fileRefs, outcome: body.outcome });
+      if (step) {
+        // keep step status in sync with backend response
+        dispatch({ type: 'step_started', stepRunId, stepType: 'human_instruction' });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('已结束') || msg.includes('不在等待状态')) {
+        // 状态漂移（他人已完成/超时/服务重启恢复）：静默重拉全量状态，不再弹错误
+        try {
+          const [session, events, artifacts, verdicts] = await Promise.all([
+            AgentApi.get(sessionId),
+            AgentApi.events(sessionId, 0).catch(() => [] as AgentEvent[]),
+            AgentApi.artifacts(sessionId).catch(() => [] as Artifact[]),
+            AgentApi.verdicts(sessionId).catch(() => [] as VerdictDraft[]),
+          ]);
+          lastSeqRef.current = events.reduce((m, e) => Math.max(m, e.seq), 0);
+          dispatch({ type: 'init', session, events, artifacts, verdicts });
+        } catch { /* 刷新失败则保留原状 */ }
+        return;
+      }
+      throw err;
     }
   }, [sessionId]);
 
