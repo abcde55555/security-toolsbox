@@ -155,6 +155,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---- Human steps ----
+  app.get(
+    '/api/agent/human-todos',
+    { preHandler: requireRole('auditor') },
+    async (_req, reply) => {
+      ok(reply, getServices().repos.projects.listPendingHumanSteps());
+    },
+  );
+
   app.post(
     '/api/agent/sessions/:id/human-steps/:stepRunId/complete',
     { preHandler: requireRole('auditor') },

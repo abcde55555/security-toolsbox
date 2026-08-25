@@ -1,4 +1,4 @@
-import { Layout, Menu, Badge, Button, Empty, List, Popover, Tag, Tooltip, Typography } from 'antd';
+import { Layout, Menu, Badge, Button, Empty, List, Popover, Tag, Tooltip, Typography, Space } from 'antd';
 import {
   AppstoreOutlined,
   BellOutlined,
@@ -27,12 +27,30 @@ import { useNotifications } from './hooks/useNotifications';
 
 const { Header, Content } = Layout;
 
+function useHumanTodoCount(): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetch('/api/agent/human-todos')
+        .then((r) => r.json())
+        .then((d) => { if (alive) setCount(Array.isArray(d.data) ? d.data.length : 0); })
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+  return count;
+}
+
+import { useState, useEffect } from 'react';
+
 const navItems = [
   { key: '/tools', icon: <AppstoreOutlined />, label: '工具库' },
   { key: '/clauses', icon: <SafetyCertificateOutlined />, label: '合规测试项' },
   { key: '/templates', icon: <ProfileOutlined />, label: '模板' },
   { key: '/projects', icon: <ExperimentOutlined />, label: '项目' },
-  { key: '/agent', icon: <RobotOutlined />, label: 'Agent 测试' },
+  { key: '__AGENT__', icon: <RobotOutlined />, label: 'Agent 测试' },
   { key: '/knowledge', icon: <BookOutlined />, label: '知识库' },
   { key: '/runs', icon: <HistoryOutlined />, label: '执行记录' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
@@ -166,7 +184,22 @@ function NotificationBell() {
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const selected = navItems.find((n) => location.pathname.startsWith(n.key))?.key ?? '/projects';
+  const humanTodos = useHumanTodoCount();
+  const menuItems = navItems.map((n) =>
+    n.key === '__AGENT__'
+      ? {
+          ...n,
+          key: '/agent',
+          label: (
+            <Space size={6}>
+              <span>Agent 测试</span>
+              {humanTodos > 0 && <Badge count={humanTodos} size="small" color="#dc2626" title={`${humanTodos} 个人工步骤待处理`} />}
+            </Space>
+          ),
+        }
+      : n,
+  );
+  const selected = navItems.find((n) => location.pathname.startsWith(n.key) && n.key !== '__AGENT__')?.key ?? '/projects';
 
   return (
     <Layout style={{ height: '100vh' }}>
@@ -179,7 +212,7 @@ export default function App() {
           theme="dark"
           mode="horizontal"
           selectedKeys={[selected]}
-          items={navItems}
+          items={menuItems}
           onClick={(e) => navigate(e.key)}
           style={{ flex: 1, minWidth: 0, background: 'transparent' }}
         />

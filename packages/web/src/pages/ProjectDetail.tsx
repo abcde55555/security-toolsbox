@@ -1,3 +1,4 @@
+import AssessmentStepper from '../components/AssessmentStepper';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout, Button, Tag, Space, Typography, Spin, Empty, Tabs, Modal, Form,
@@ -402,6 +403,14 @@ export default function ProjectDetail() {
           description="你可以在「模板」页编辑添加表单式模组，或直接用右上角「单独执行工具」运行单条命令。"
         />
       )}
+
+      <AssessmentStepper
+        projectId={id}
+        hasTemplate={!!template}
+        latestRun={project?.latestRun}
+        reportGenerated={!!report}
+        onGoto={(t) => setTab(t)}
+      />
 
       <Tabs
         activeKey={tab}

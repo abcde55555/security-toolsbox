@@ -52,6 +52,8 @@ export interface ChatResult {
 export interface StreamChunk {
   /** Incremental assistant text delta. */
   delta?: string;
+  /** True when this delta is reasoning_content (thinking) rather than visible answer. */
+  reasoning?: boolean;
   /** Emitted once a complete tool call is assembled (stream may not support partial args). */
   toolCall?: ToolCall;
   usage?: ChatUsage;

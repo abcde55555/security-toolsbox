@@ -437,6 +437,11 @@ export class DeepSeekProvider implements AiProvider {
               contentBuffer += delta.content;
               onChunk({ delta: delta.content });
             }
+            // 推理模型：思考增量单独标记转发，前端显示「思考中」实时反馈
+            const rc = delta?.reasoning_content as unknown;
+            if (typeof rc === 'string' && rc) {
+              onChunk({ delta: rc, reasoning: true });
+            }
             const dtc = delta?.tool_calls as Array<{
               index: number;
               id?: string;

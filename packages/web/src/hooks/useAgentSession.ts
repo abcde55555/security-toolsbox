@@ -38,7 +38,7 @@ export type AgentAction =
   | { type: 'verdict'; v: VerdictDraft }
   | { type: 'verdict_updated'; v: Partial<VerdictDraft> & { id: string } }
   | { type: 'message'; role: string; content: string; seq?: number; id?: string }
-  | { type: 'message_delta'; messageId: string; delta: string }
+  | { type: 'message_delta'; messageId: string; delta: string; reasoning?: boolean }
   | { type: 'progress'; stepRunId: string; percent?: number; message?: string }
   | { type: 'error'; message: string; stepRunId?: string }
   | { type: 'done'; status: string }
@@ -390,8 +390,11 @@ export function reducer(state: AgentSessionState, action: AgentAction): AgentSes
         session: state.session ? { ...state.session, status: action.status as TAgentSession['status'], finishedAt: new Date().toISOString() } : state.session,
       };
     case 'message_delta': {
-      const prev = state.streaming[action.messageId] ?? '';
-      return { ...state, streaming: { ...state.streaming, [action.messageId]: prev + action.delta } };
+      const prev = state.streaming[action.messageId] ?? { text: '', reasoning: '' };
+      const next = action.reasoning
+        ? { ...prev, reasoning: prev.reasoning + action.delta }
+        : { ...prev, text: prev.text + action.delta };
+      return { ...state, streaming: { ...state.streaming, [action.messageId]: next } };
     }
     case 'events_backfill': {
       const known = new Set(state.events.map((e) => e.id));
@@ -527,7 +530,9 @@ export function useAgentSession(sessionId: string | undefined): UseAgentSessionR
     onVerdictDrafted: (v) => dispatch({ type: 'verdict', v }),
     onVerdictUpdated: (v) => dispatch({ type: 'verdict_updated', v }),
     onMessage: (p) => { dispatch({ type: 'message', role: p.role, content: p.content, seq: p.seq, id: p.id }); },
-    onMessageDelta: (p) => { dispatch({ type: 'message_delta', messageId: p.messageId, delta: p.delta }); },
+    onMessageDelta: (p) => {
+      dispatch({ type: 'message_delta', messageId: p.messageId, delta: p.delta, reasoning: p.reasoning });
+    },
     onError: (p) => dispatch({ type: 'error', message: p.message }),
     onDone: (p) => dispatch({ type: 'done', status: p.status }),
   };

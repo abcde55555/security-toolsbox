@@ -7,7 +7,7 @@ import {
   CodeOutlined,
 } from '@ant-design/icons';
 import type { HumanStepState } from './types';
-import EvidenceUploader, { type UploadedEvidence } from './EvidenceUploader';
+import RichEvidenceEditor, { type RichValue } from './RichEvidenceEditor';
 
 /**
  * Very small plain-text "markdown" renderer: preserves line breaks,
@@ -34,8 +34,19 @@ function MiniMarkdown({ text }: { text?: string }) {
 }
 
 function renderInline(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = text.split(/(!\[[^\]]*\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((p, i) => {
+    const img = p.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
+    if (img) {
+      return (
+        <img
+          key={i}
+          src={`/api/upload/${encodeURIComponent(img[1])}`}
+          style={{ maxWidth: '100%', borderRadius: 6, margin: '4px 0' }}
+          alt="证据"
+        />
+      );
+    }
     if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={i}>{p.slice(2, -2)}</strong>;
     if (/^`[^`]+`$/.test(p)) return <code key={i} style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>{p.slice(1, -1)}</code>;
     return <span key={i}>{p}</span>;
@@ -53,15 +64,14 @@ export default function HumanStepCard({
   onReportIssue?: (note: string) => void;
   active?: boolean;
 }) {
-  const [files, setFiles] = useState<UploadedEvidence[]>([]);
-  const [outcome, setOutcome] = useState('');
+  const [rich, setRich] = useState<RichValue>({ markdown: '', fileRefs: [] });
   const [submitting, setSubmitting] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueNote, setIssueNote] = useState('');
   const cardRef = useRef<HTMLDivElement>(null);
 
   const evidenceRequired = step.evidenceRequired ?? false;
-  const canSubmit = !evidenceRequired || files.length > 0;
+  const canSubmit = evidenceRequired ? rich.fileRefs.length > 0 : rich.markdown.trim().length > 0 || rich.fileRefs.length > 0;
 
   // Scroll into view and pulse the document title while waiting.
   useEffect(() => {
@@ -87,9 +97,9 @@ export default function HumanStepCard({
     setSubmitting(true);
     try {
       await onComplete({
-        outcome: outcome.trim() || undefined,
-        fileRefs: files.map((f) => f.fileRef),
-        functionModule: files[0]?.functionModule,
+        outcome: rich.markdown || undefined,
+        fileRefs: rich.fileRefs,
+        functionModule: step.functionModule,
         status: 'success',
       });
       message.success('已提交，Agent 继续执行');
@@ -168,17 +178,13 @@ export default function HumanStepCard({
         <>
           <div style={{ marginTop: 10 }}>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              上传证据 {evidenceRequired && <span style={{ color: '#dc2626' }}>（必需）</span>}
+              操作记录与证据 {evidenceRequired && <span style={{ color: '#dc2626' }}>（至少贴一张图片）</span>}
             </Typography.Text>
-            <EvidenceUploader value={files} onChange={setFiles} functionModule={step.functionModule} />
+            <RichEvidenceEditor
+              placeholder="描述操作过程、粘贴结果截图…（支持文字与图片混排）"
+              onChange={setRich}
+            />
           </div>
-          <Input.TextArea
-            style={{ marginTop: 8 }}
-            rows={2}
-            placeholder="操作记录 / 结果说明（可选）"
-            value={outcome}
-            onChange={(e) => setOutcome(e.target.value)}
-          />
           <Space style={{ marginTop: 10 }}>
             <Button type="primary" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleComplete}>
               完成并继续

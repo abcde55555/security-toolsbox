@@ -313,6 +313,35 @@ export class ProjectRepository {
     return rows.map((r) => this.mapStepRun(r));
   }
 
+  /** 跨会话的人工步骤待办：等待人工处理的 step_runs + 会话摘要 */
+  listPendingHumanSteps(): Array<{
+    stepRunId: string;
+    sessionId: string;
+    sessionName: string;
+    instruction: string;
+    phase: string | null;
+    updatedAt: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT sr.id AS stepRunId, sr.agentSessionId AS sessionId, s.name AS sessionName,
+                sr.instruction, sr.phase, sr.updatedAt
+         FROM step_runs sr JOIN agent_sessions s ON s.id = sr.agentSessionId
+         WHERE sr.stepType='human_instruction' AND sr.status='running'
+           AND s.status IN ('running','waiting_human')
+         ORDER BY sr.updatedAt ASC`,
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      stepRunId: String(r.stepRunId),
+      sessionId: String(r.sessionId),
+      sessionName: String(r.sessionName ?? ''),
+      instruction: String(r.instruction ?? ''),
+      phase: r.phase ? String(r.phase) : null,
+      updatedAt: String(r.updatedAt ?? ''),
+    }));
+  }
+
   getStepRun(id: string): StepRun | null {
     const row = this.db.prepare('SELECT * FROM step_runs WHERE id = ?').get(id) as
       | Record<string, unknown>

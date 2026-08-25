@@ -187,6 +187,12 @@ async function bootstrap(): Promise<void> {
       root: config.webDistDir,
       prefix: '/',
       index: ['index.html'],
+      setHeaders: (res, pathname) => {
+        // index.html 不缓存：发版后浏览器立即拿新 bundle（assets 自带 hash 可长缓存）
+        if (pathname.endsWith('.html') || pathname === '/') {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
     });
     app.setNotFoundHandler((req, reply) => {
       if (req.raw.url?.startsWith('/api/') || req.raw.url?.startsWith('/socket.io/')) {

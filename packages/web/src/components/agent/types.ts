@@ -101,8 +101,8 @@ export interface AgentSessionState {
   verdicts: VerdictDraft[];
   phases: PhaseTransition[];
   messages: TranscriptMessage[];
-  /** 正在流式生成的消息缓冲（messageId -> 已累积文本），final 到达即清空 */
-  streaming: Record<string, string>;
+  /** 正在流式生成的消息缓冲：正文与思考增量分开累积，final 到达即清空 */
+  streaming: Record<string, { text: string; reasoning: string }>;
   /** Last seq applied (from socket or historical fetch), for gap backfill. */
   lastSeq: number;
   /** Synthetic counter for ordering events without a seq. */

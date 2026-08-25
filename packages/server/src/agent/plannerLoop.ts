@@ -177,6 +177,7 @@ export function runPlannerLoop(
                   sessionId: state.session.id,
                   messageId: streamMessageId,
                   delta: chunk.delta,
+                  ...(chunk.reasoning ? { reasoning: true } : {}),
                 });
               }
             },

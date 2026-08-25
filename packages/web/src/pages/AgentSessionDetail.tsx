@@ -114,7 +114,7 @@ export default function AgentSessionDetail() {
           />
         </div>
 
-        {Object.values(agent.state.streaming).some((t) => t.length > 0) && (
+        {Object.values(agent.state.streaming).some((b) => b.text.length > 0 || b.reasoning.length > 0) && (
           <div
             style={{
               padding: '8px 14px',
@@ -130,7 +130,21 @@ export default function AgentSessionDetail() {
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               <LoadingOutlined spin /> 正在生成…
             </Typography.Text>
-            <div>{Object.values(agent.state.streaming).join('')}</div>
+            {(() => {
+              const all = Object.values(agent.state.streaming);
+              const reasoning = all.map((b) => b.reasoning).join('');
+              const text = all.map((b) => b.text).join('');
+              return (
+                <>
+                  {reasoning && (
+                    <div style={{ color: '#94a3b8', fontStyle: 'italic', marginBottom: text ? 4 : 0 }}>
+                      💭 {reasoning.slice(-400)}
+                    </div>
+                  )}
+                  {text && <div>{text}</div>}
+                </>
+              );
+            })()}
           </div>
         )}
         <AiTranscriptCollapse
