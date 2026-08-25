@@ -6,6 +6,11 @@ import type {
 } from '@en18031/shared';
 import type { ServiceContext } from './context.js';
 import { Errors } from './errors.js';
+import { evaluateExpression } from './safeExpression.js';
+
+function truthy(v: unknown): boolean {
+  return Boolean(v);
+}
 
 export interface PersistResultArgs {
   projectId: string;
@@ -109,6 +114,8 @@ export class ClauseMappingService {
           severity: rule.severityOverride ?? clause.defaultSeverity,
         });
         evidenceIds.push(evRow.id);
+        // evidence-only 语义：仅沉淀证据，不产出判定（此前误产出 pass=false 判定）
+        if (rule.onMatch === 'evidence-only') continue;
         const pass = rule.onMatch === 'verdict-pass';
         const persisted = this.ctx.repos.results.insertVerdict({
           stepRunId,
@@ -160,7 +167,11 @@ export class ClauseMappingService {
     try {
       if (type === 'contains') return haystack.includes(pattern);
       if (type === 'regex') return new RegExp(pattern, 'm').test(haystack);
-      if (type === 'js-expression') return new RegExp(pattern, 'm').test(haystack);
+      if (type === 'js-expression') {
+        // v0.4：真·受限表达式求值（可用变量 output / exitCode），替代此前的正则近似
+        const outcome = evaluateExpression(pattern, { output: haystack });
+        return outcome.ok === true && truthy(outcome.value);
+      }
     } catch {
       return false;
     }

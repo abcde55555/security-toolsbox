@@ -132,11 +132,14 @@ function describeCond(c: FinalCondition, pass: boolean): string {
  * Aggregate per-step pass/fail signals into a clause verdict according to the
  * aggregation mode. `signals` only includes steps that produced a decision.
  * `skipped` lists stepIds that were skipped (upstream failure / unavailable).
+ * `results`（可选）为 stepId → 原始执行结果，chain 聚合的 finalVerdict 条件
+ * 求值依赖它；不传时条件一律视为"信息不足"，保持向后兼容。
  */
 export function aggregateClause(
   agg: ClauseAggregation,
   signals: Array<{ pass: boolean; severity?: Severity; reason: string }>,
   skipped: string[],
+  results?: Map<string, ExecutionResult>,
 ): { pass: boolean; severity?: Severity; reason: string } {
   if (agg.mode === 'chain') {
     // Chain: if anything was skipped due to upstream failure, clause fails.
@@ -147,7 +150,7 @@ export function aggregateClause(
         reason: `上游步骤失败，已跳过: ${skipped.join(', ')}`,
       };
     }
-    const final = evaluateChainFinal(agg.finalVerdict, new Map(), new Set());
+    const final = evaluateChainFinal(agg.finalVerdict, results ?? new Map(), new Set());
     if (final) return final;
     // Fallback: any fail -> fail, all pass -> pass.
     if (signals.some((s) => !s.pass)) {

@@ -45,6 +45,7 @@ packages/
 
 ## 变更日志
 
+- **v0.4（引擎补真）**：判定 DSL `js-expression` 从正则近似升级为真·受限表达式求值（safeExpression.ts：白名单解释器，变量 output/exitCode，禁 eval/new，错误安全收敛）；chain 聚合 `finalVerdict` 条件真正参与求值（orchestrator 传入 per-step 执行结果）；`TemplateStep.retry/retryBackoffMs` 自动生效（stepRetry.ts：仅 fail/timeout、线性退避、上限 5、轨迹入证据链）；`evidence-only` 映射规则不再误产出 pass=false 判定。新增 4 个测试文件 19 用例。详见 06 §判定服务。
 - **v0.3（主线打通 + UX）**：前后端契约错位清零——判定审核对齐全局 approve/reject 路由；新增「人工退回补采」（retryClause：回拉 collection + 指令重启循环）与「人工补充证据」（合成 evidence_attach 步骤）两个后端端点并接入 UI；删除 resume/advance/rollback 死方法。修复 socket 加房（握手 query sessionId），实时事件真正生效。修复 mapEvidence 丢失 Agent 扩展列（clauseId/functionModule/sourceStepType）。UX：向导允许空选条款并由 Agent 对话确认范围（含引导文案）、Excel 导出新增 AI 叙述工作表。新增真实浏览器 E2E（scripts/e2e-browser.mjs，10 项断言）。详见 07 §11.4、08、09 §6-7。
 - **v0.2（P1 三件套）**：经验笔记→AI 编译 Skill 闭环（表/路由/`search_skills`+`propose_skill` 工具/提示词注入/知识库页）；非阻塞通知（表/路由/铃铛 UI/会话完成沉淀建议）；AI 成文报告（narrativeModel 非阻塞生成+降级）。settings 五端点补挂鉴权。详见 05 §3、07 §11.5/§15、08 §7、09 §3-4。
 - v0.1：初版 Code Wiki（12 篇全量分析）。

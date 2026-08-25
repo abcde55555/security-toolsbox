@@ -123,7 +123,7 @@ create/update/delete（builtin 只读禁改禁删；删除前 countReferences �
 
 `processAndPersist` 两条互斥路径：
 - **路径 A（模组自带 verdicts）**：证据先入库 → verdict 校验条款存在（无效审计 clause.verdict.invalid 并丢弃）→ evidenceRefs 下标映射成证据 id（越界剔除/空回退首条）→ 自动降级两规则（无证据 → pass=false/high「判定缺失证据」；pass+high → middle）→ verdictGroup=stepRunId。
-- **路径 B（无模块判定，走 ClauseMappingRule）**：按 priority 降序对 `stdout+'\n'+stderr` 匹配 matchRule（contains/regex/**js-expression 当前实现等同 regex**）→ 命中合成 assertion 证据 + 判定 `pass = onMatch==='verdict-pass'`（evidence-only 目前同样产出 pass=false 判定）。
+- **路径 B（无模块判定，走 ClauseMappingRule）**：按 priority 降序对 `stdout+'\n'+stderr` 匹配 matchRule（contains/regex/**js-expression —— v0.4 起为真·受限表达式求值**，safeExpression.ts 白名单解释器：变量 `output`/`exitCode`，支持正则 test/includes/match、逻辑比较算术；禁 eval/new/未知标识符，任何错误安全收敛 false）→ 命中合成 assertion 证据 + 判定 `pass = onMatch==='verdict-pass'`（**v0.4 修正：evidence-only 仅沉淀证据不再产出 pass=false 判定**）。
 
 另有 listClauses/validateClauseExists/**overrideVerdict**（人工改判入口，审计 clause.verdict.override）。
 
@@ -140,10 +140,10 @@ create/update/delete（builtin 只读禁改禁删；删除前 countReferences �
 | 函数 | 职责 |
 | --- | --- |
 | `evaluateStepVerdict(rule, result)` | kind='module'：取 result.verdicts 中 mapClauseId 匹配项；kind='command'：拼接 stdout+stderr，**先判 fail 条件再判 pass 条件**（exitCode 精确匹配/contains/regex，safeRegexTest 吞异常），都不中返回 null |
-| `aggregateClause(agg, signals, skipped)` | cross_check：any_pass/any_fail/majority(**平票按失败**)/all_pass 投票，失败严重度取最重(sevRank)；chain：有 skipped 直接 fail |
+| `aggregateClause(agg, signals, skipped, results?)` | cross_check：any_pass/any_fail/majority(**平票按失败**)/all_pass 投票，失败严重度取最重(sevRank)；chain：有 skipped 直接 fail；**v0.4 起 results（stepId→ExecutionResult）由 orchestrator 传入，finalVerdict 条件真正参与求值**，不传时保持旧兜底 |
 | `evaluateChainFinal(rule, results, skipped)` | FinalCondition 三型求值（exit_code eq/ne；contains/regex 支持 negate） |
 
-> 实现现状备注（引用源码事实）：chain 分支的 `finalVerdict` 条件在聚合阶段传入空 Map，实际未参与真实求值（兜底为"任一信号 fail 即 fail"）；`expandMode`(cartesian/for_each_json) 仅建模存储未实现展开；`FailureStrategy 'retry'` 与 step.retry/retryBackoffMs 字段未被自动消费（由 retryStep 手动补偿）。这些是评估平台能力时的已知边界。
+> 实现现状备注：~~chain finalVerdict 空 Map 未求值~~、~~step.retry/retryBackoffMs 未被自动消费~~ 均已于 v0.4 解决——orchestratorService 新增 complianceResults 缓存并传入聚合；executeSingleStep 经 stepRetry.executeWithRetry 消费 retry 配置（仅 fail/timeout 重试、线性退避 backoff×次数、上限钳 5、重试轨迹写入证据链）。仍留边界：`expandMode`(cartesian/for_each_json) 仅建模存储未实现展开。
 
 ## 4. 事件与落盘约定小结
 

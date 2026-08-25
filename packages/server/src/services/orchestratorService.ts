@@ -15,6 +15,7 @@ import { createCancelToken } from '../engine/cancelToken.js';
 import type { CancelToken } from '@en18031/shared';
 import { ClauseMappingService } from './clauseMappingService.js';
 import { evaluateStepVerdict, aggregateClause } from './verdictEvaluator.js';
+import { executeWithRetry, clampAttempts, DEFAULT_RETRY_BACKOFF_MS } from './stepRetry.js';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -372,10 +373,13 @@ export class OrchestratorService {
   private complianceSignals = new Map<string, Map<string, { pass: boolean; severity?: import('@en18031/shared').Severity; reason: string }>>();
   /** Per-run, stepIds skipped because an upstream dependency failed. */
   private complianceSkipped = new Map<string, Set<string>>();
+  /** Per-run, per-stepId 原始执行结果 —— chain 聚合 finalVerdict 条件求值所需（v0.4）。 */
+  private complianceResults = new Map<string, Map<string, import('@en18031/shared').ExecutionResult>>();
 
   private initComplianceRun(runId: string): void {
     this.complianceSignals.set(runId, new Map());
     this.complianceSkipped.set(runId, new Set());
+    this.complianceResults.set(runId, new Map());
   }
 
   /**
@@ -398,6 +402,9 @@ export class OrchestratorService {
     }
     const signal = evaluateStepVerdict(step.verdictRule, result);
     if (signal) signals.set(step.stepId, signal);
+    if (status === 'success') {
+      this.complianceResults.get(runId)?.set(step.stepId, result);
+    }
   }
 
   /**
@@ -453,7 +460,12 @@ export class OrchestratorService {
         }
       }
 
-      const verdict = aggregateClause(aggregation, clauseSignals, clauseSkipped);
+      const verdict = aggregateClause(
+        aggregation,
+        clauseSignals,
+        clauseSkipped,
+        this.complianceResults.get(runId) ?? new Map(),
+      );
       const firstStepRun = clauseSteps
         .map((s) => stepRunByStepId.get(s.stepId))
         .find((sr): sr is StepRun => !!sr?.id);
@@ -477,6 +489,7 @@ export class OrchestratorService {
 
     this.complianceSignals.delete(runId);
     this.complianceSkipped.delete(runId);
+    this.complianceResults.delete(runId);
   }
 
 
@@ -806,26 +819,55 @@ export class OrchestratorService {
     const active = activeRuns.get(runId);
     const cancelToken = active?.cancelToken ?? createCancelToken();
 
-    let result: ExecutionResult;
-    if (tool.interactionMode === 'form' || step.interactionModeOverride === 'form') {
-      result = await this.ctx.engine.runModule(step.toolId, params, {
-        projectId,
-        stepId: step.stepId,
-        userId: this.ctx.userId,
-        variables: projectVariables,
-        onProgress,
-        cancelToken,
-        timeoutMs: step.timeoutMs,
-      });
-    } else {
+    const runOnce = async (attempt: number): Promise<ExecutionResult> => {
+      if (attempt > 1) {
+        this.ctx.bus.emit('run:logLine', {
+          projectId, runId, stepRunId, stepId: step.stepId,
+          line: `[自动重试] 第 ${attempt} 次尝试（共至多 ${clampAttempts(step.retry)} 次）`,
+        });
+      }
+      if (tool.interactionMode === 'form' || step.interactionModeOverride === 'form') {
+        return await this.ctx.engine.runModule(step.toolId, params, {
+          projectId,
+          stepId: step.stepId,
+          userId: this.ctx.userId,
+          variables: projectVariables,
+          onProgress,
+          cancelToken,
+          timeoutMs: step.timeoutMs,
+        });
+      }
       const command = this.buildCommandForStep(tool, step, params);
-      result = await this.ctx.engine.runCommand(command, {
+      return await this.ctx.engine.runCommand(command, {
         projectId,
         stepId: step.stepId,
         toolId: step.toolId,
         timeoutMs: step.timeoutMs ?? config.executionTimeoutMs,
         onProgress,
         cancelToken,
+      });
+    };
+
+    // v0.4：TemplateStep.retry / retryBackoffMs 真正生效（此前字段存在但被无视）。
+    // 仅 fail/timeout 触发；cancelled 是用户意图不重试。退避 = backoff × 已试次数。
+    const { result, attempts, attemptNotes } = await executeWithRetry(runOnce, {
+      maxAttempts: clampAttempts(step.retry),
+      backoffMs: step.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
+    });
+    if (attempts > 1) {
+      for (const note of attemptNotes) {
+        result.evidence.unshift({
+          type: 'validation_error',
+          content: `[自动重试] ${note}`,
+          severity: 'low',
+        });
+      }
+      result.evidence.unshift({
+        type: 'assertion',
+        content: attempts >= clampAttempts(step.retry)
+          ? `[自动重试] 已达最大尝试次数 ${attempts}/${clampAttempts(step.retry)}`
+          : `[自动重试] 第 ${attempts} 次尝试成功`,
+        severity: result.status === 'success' ? 'low' : 'middle',
       });
     }
 
