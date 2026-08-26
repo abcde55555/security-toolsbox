@@ -368,7 +368,7 @@ export default function Templates() {
         )}
       </Sider>
       <Content style={{ padding: 16, overflow: 'auto' }}>
-        {!selected ? <Empty description="选择左侧模板查看详情" /> : (
+        {!selected ? <Empty description="暂无模板——点击左上角「新建模板」创建第一个模板" /> : (
           <>
             <Card
               title={<><Typography.Text strong>{selected.name}</Typography.Text> <Tag style={{ marginLeft: 8 }}>rev {selected.revision}</Tag></>}
@@ -431,7 +431,7 @@ export default function Templates() {
                   <Typography.Text type="secondary">点击右上角「编辑」添加步骤，或直接在项目页用「单独执行工具」运行命令。</Typography.Text>
                 </Empty>
               ) : (
-              <AntSteps direction="vertical" current={selected.steps.length - 1}
+              <AntSteps direction="vertical" current={-1}
                 items={selected.steps.map((s) => ({
                   title: <Space><span>{s.title}</span><Tag>{s.stepId}</Tag><Tag color={s.onFailure === 'abort' ? 'red' : 'default'}>{failureStrategyText[s.onFailure] ?? s.onFailure}</Tag></Space>,
                   description: (

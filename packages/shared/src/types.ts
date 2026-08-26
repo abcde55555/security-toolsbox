@@ -380,6 +380,8 @@ export interface Template {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** 列表接口联查出的项目名（仅 listSessions 返回） */
+  projectName?: string;
   deletedAt?: string;
 }
 
@@ -397,6 +399,8 @@ export interface Project {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** 列表接口联查出的项目名（仅 listSessions 返回） */
+  projectName?: string;
   finishedAt?: string;
   deletedAt?: string;
 }
@@ -636,6 +640,8 @@ export interface AgentSession {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** 列表接口联查出的项目名（仅 listSessions 返回） */
+  projectName?: string;
   finishedAt?: string;
 }
 

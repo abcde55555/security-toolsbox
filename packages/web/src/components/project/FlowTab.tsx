@@ -18,6 +18,7 @@ interface FlowTabProps {
   onOpenStep: (s: StepRun) => void;
   onRetry: (stepRunId: string) => void;
   onSelectRun: (runId: string) => void;
+  templateMissing?: boolean;
 }
 
 function handleKeyboard(e: React.KeyboardEvent, fn: () => void) {
@@ -30,7 +31,7 @@ function handleKeyboard(e: React.KeyboardEvent, fn: () => void) {
 export default function FlowTab(props: FlowTabProps) {
   const {
     template, steps, tools, running, onOpenStep, onRetry, runs, activeRunId, onSelectRun,
-    overallProgress, eta,
+    overallProgress, eta, templateMissing,
   } = props;
 
   const byStepId = useMemo(() => {
@@ -57,7 +58,21 @@ export default function FlowTab(props: FlowTabProps) {
 
   const percent = overallProgress || (stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0);
 
-  if (!template) return <Empty description="无法加载模板" />;
+  if (!template) {
+    return (
+      <Empty
+        description={
+          templateMissing ? '该项目由 Agent 引导创建，不使用编排模板——步骤由会话动态推进' : '无法加载模板（可能已被删除）'
+        }
+      >
+        {templateMissing ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            请前往「Agent 测试」页查看该项目的测试会话进度。
+          </Typography.Text>
+        ) : undefined}
+      </Empty>
+    );
+  }
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">

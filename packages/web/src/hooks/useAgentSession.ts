@@ -309,7 +309,12 @@ function applyHumanCompleted(state: AgentSessionState, stepRunId: string, fileRe
     ...state,
     humanSteps,
     steps,
-    session: state.session ? { ...state.session, status: 'running' } : state.session,
+    // 会话状态以服务端事件为准：仅当本地还停留在 waiting_human 时才推进到 running，
+    // 避免孤儿恢复（服务端置 error/planning）被前端误标成“运行中”。
+    session:
+      state.session && state.session.status === 'waiting_human'
+        ? { ...state.session, status: 'running' }
+        : state.session,
     orderCounter: nextOrder(state),
   };
 }

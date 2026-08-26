@@ -68,6 +68,7 @@ export class ClauseRepository {
   tree(standardVersion: string, level?: 'L1' | 'L2' | 'L3'): ClauseNode[] {
     const all = this.list(standardVersion, level);
     const byId = new Map<string, ClauseNode>();
+    // 叶子节点不预挂 children：rc-table 对空数组仍渲染展开图标，造成“可折叠却无内容”的假象
     for (const c of all) byId.set(c.clauseId, { ...c, children: [] });
     const roots: ClauseNode[] = [];
     for (const node of byId.values()) {
@@ -82,7 +83,9 @@ export class ClauseRepository {
       nodes.forEach((n) => n.children && sortRec(n.children));
     };
     sortRec(roots);
-    return roots;
+    const strip = (nodes: ClauseNode[]): ClauseNode[] =>
+      nodes.map((n) => (n.children && n.children.length > 0 ? { ...n, children: strip(n.children) } : { ...n, children: undefined }));
+    return strip(roots);
   }
 
   countForLevel(standardVersion: string, level: 'L1' | 'L2' | 'L3'): number {

@@ -56,7 +56,16 @@ export default function AgentSessions() {
             {
               title: '会话',
               dataIndex: 'id',
-              render: (id: string) => <Typography.Text copyable={{ text: id }}>{id.slice(0, 8)}</Typography.Text>,
+              render: (id: string, row: { projectName?: string; createdAt?: string }) => (
+                <div>
+                  <Typography.Text strong style={{ display: 'block' }}>
+                    {row.projectName || '未命名会话'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }} copyable={{ text: id }}>
+                    {id.slice(0, 8)}
+                  </Typography.Text>
+                </div>
+              ),
             },
             {
               title: '状态',

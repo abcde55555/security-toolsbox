@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Card,
+import {Card,
   Button,
   Table,
   Modal,
@@ -14,6 +13,7 @@ import {
   Popconfirm,
   Typography,
   Alert,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -145,8 +145,15 @@ export default function Settings() {
     setModalOpen(true);
   }
 
+  const [saving, setSaving] = useState(false);
   async function submit() {
-    const values = await form.validateFields();
+    let values: AiProviderForm;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return; // 校验失败：表单上已有红字提示
+    }
+    setSaving(true);
     try {
       await SettingsApi.saveProvider(values);
       message.success(editing ? '已更新' : '已添加');
@@ -155,6 +162,8 @@ export default function Settings() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '保存失败';
       message.error(msg);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -196,12 +205,12 @@ export default function Settings() {
   }
 
   function testFromForm() {
-    // Save first so the backend can test the candidate.
+    // Save first so the backend can test the candidate (button copy explains this).
     form.validateFields().then((values) => {
       SettingsApi.saveProvider(values)
         .then((saved) => test(saved.id))
         .catch(() => message.error('请先修正表单错误'));
-    });
+    }).catch(() => message.warning('请先补全必填项'));
   }
 
   const columns = [
@@ -290,11 +299,13 @@ export default function Settings() {
         width={620}
         footer={
           <Space>
-            <Button onClick={() => testFromForm()} loading={testing === 'new'}>
-              测试连接
-            </Button>
+            <Tooltip title="会先保存这条供应商配置再发起连通性测试">
+              <Button onClick={() => testFromForm()} loading={testing === 'new'}>
+                保存并测试连接
+              </Button>
+            </Tooltip>
             <Button onClick={() => setModalOpen(false)}>取消</Button>
-            <Button type="primary" onClick={submit}>
+            <Button type="primary" loading={saving} onClick={submit}>
               保存
             </Button>
           </Space>
@@ -354,7 +365,7 @@ export default function Settings() {
             <Form.Item name="maxRetries" label="重试次数" style={{ flex: 1, marginLeft: 8 }}>
               <InputNumber min={0} max={5} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name="isActive" label="设为启用" valuePropName="checked" style={{ flex: 1, marginLeft: 8 }}>
+            <Form.Item name="isActive" label="设为启用" style={{ flex: 1, marginLeft: 8 }}>
               <Select
                 options={[
                   { value: true, label: '启用' },
@@ -379,12 +390,17 @@ function Dropdown({ preset }: { preset: (key: string) => void }) {
     { key: 'ollama', label: 'Ollama（本地）' },
     { key: 'vllm', label: 'vLLM（本地）' },
   ];
+  const [quickPick, setQuickPick] = useState<string>();
   return (
     <Select
       placeholder="快速添加…"
       style={{ width: 160 }}
       allowClear
-      onChange={(v) => v && preset(v)}
+      value={quickPick}
+      onChange={(v) => {
+        setQuickPick(undefined); // 选完立即复位：同一预设可连续再次选择
+        if (v) preset(v);
+      }}
       options={items}
     />
   );

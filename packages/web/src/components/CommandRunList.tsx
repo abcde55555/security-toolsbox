@@ -37,9 +37,9 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
     return (id?: string | null) => id ? (map.get(id) ?? `${id.slice(0, 8)}…`) : '独立运行';
   }, [projects]);
 
-  async function load() {
+  async function load(opts?: { silent?: boolean }) {
     const seq = ++loadSeq.current;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
       const res = await CommandRunsApi.list({
         page, pageSize, projectId, status, keyword: debouncedKeyword.trim() || undefined,
@@ -72,7 +72,7 @@ export default function CommandRunList({ projectId, height }: { projectId?: stri
   const hasLive = items.some((r) => NON_TERMINAL.has(r.status));
   useEffect(() => {
     if (!hasLive) return;
-    const t = setInterval(() => void load(), 4000);
+    const t = setInterval(() => void load({ silent: true }), 4000);
     return () => clearInterval(t);
   }, [hasLive, page, pageSize, projectId, status, debouncedKeyword]);
 

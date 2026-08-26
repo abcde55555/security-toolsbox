@@ -188,7 +188,7 @@ export default function Clauses() {
   };
 
   const openJson = async () => {
-    setJsonText(JSON.stringify(flatClauses, null, 2));
+    setJsonText(JSON.stringify(flatClauses.map((c) => { const { children: _drop, ...rest } = c as Clause & { children?: unknown }; return rest; }), null, 2));
     setJsonOpen(true);
   };
   const importJson = async () => {
@@ -267,7 +267,7 @@ export default function Clauses() {
                 {activeStd === s.id && (
                   <Space size={4} style={{ marginTop: 4 }}>
                     <Button size="small" type="text" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEditStd(s); }} />
-                    <Popconfirm title={`删除标准 ${s.code}? 其下不能有条款`} onConfirm={(e) => { e?.stopPropagation(); void removeStd(s); }} onCancel={(e) => e?.stopPropagation()}>
+                    <Popconfirm title="该标准下的条款清空后才能删除；确认删除该标准？">
                       <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
                     </Popconfirm>
                   </Space>
@@ -470,7 +470,7 @@ export default function Clauses() {
         open={jsonOpen}
         onCancel={() => setJsonOpen(false)}
         onOk={() => void importJson()}
-        okText="导入/替换" cancelText="取消"
+        okText="导入（合并到现有条款）" cancelText="取消"
         width={760}
       >
         <Typography.Paragraph type="secondary">

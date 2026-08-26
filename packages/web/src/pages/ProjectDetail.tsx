@@ -40,6 +40,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState<Project & { latestRun?: ProjectRun }>();
   const [template, setTemplate] = useState<Template>();
+  const [templateMissing, setTemplateMissing] = useState(false);
   const [runs, setRuns] = useState<ProjectRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<string>();
   const [steps, setSteps] = useState<StepRun[]>([]);
@@ -396,7 +397,7 @@ export default function ProjectDetail() {
           }
         />
       )}
-      {!running && moduleStepCount === 0 && (
+      {!running && !!template && moduleStepCount === 0 && (
         <Alert
           type="info" showIcon style={{ marginBottom: 12 }}
           message="该模板没有可编排执行的步骤"
@@ -421,6 +422,7 @@ export default function ProjectDetail() {
             label: '执行流程',
             children: (
               <FlowTab
+              templateMissing={templateMissing}
                 template={template}
                 steps={steps}
                 tools={tools}

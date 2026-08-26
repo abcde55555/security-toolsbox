@@ -17,7 +17,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { ExperimentOutlined, PlusOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { ExperimentOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { KnowledgeNote, Skill } from '@en18031/shared';
 import { KnowledgeApi, SkillsApi } from '../api/endpoints';
 
@@ -205,6 +205,7 @@ export default function Knowledge() {
                       setNoteKeyword(v);
                       void loadNotes(v);
                     }}
+                    onChange={(e) => { if (!e.target.value) { setNoteKeyword(''); void loadNotes(''); } }}
                   />
                   <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>
                     新建笔记
@@ -222,7 +223,7 @@ export default function Knowledge() {
                   size="small"
                   loading={loading}
                   dataSource={filteredNotes}
-                  locale={{ emptyText: <Empty description="还没有经验笔记" /> }}
+                  locale={{ emptyText: <Empty description="还没有经验笔记" ><Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建笔记</Button></Empty> }}
                   pagination={{ pageSize: 15, showTotal: (t) => `共 ${t} 条` }}
                   columns={[
                     {
@@ -310,6 +311,7 @@ export default function Knowledge() {
                       setSkillKeyword(v);
                       void loadSkills(v);
                     }}
+                    onChange={(e) => { if (!e.target.value) { setSkillKeyword(''); void loadSkills(''); } }}
                   />
                   <Button icon={<ReloadOutlined />} onClick={() => void loadSkills(skillKeyword)} />
                 </Space>
@@ -368,7 +370,9 @@ export default function Knowledge() {
                               <Button size="small">归档</Button>
                             </Popconfirm>
                           )}
-                          <Button size="small" type="text" icon={<ExperimentOutlined />} onClick={() => void showVersions(r)} />
+                          <Tooltip title="版本历史">
+                            <Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => void showVersions(r)} />
+                          </Tooltip>
                         </Space>
                       ),
                     },

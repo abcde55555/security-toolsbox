@@ -32,7 +32,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!res.ok || (json.code !== 0 && json.code !== undefined)) {
     const msg = json.message || `请求失败 (${res.status})`;
-    throw new Error(msg);
+    const err = new Error(msg) as Error & { status?: number; code?: number };
+    err.status = res.status;
+    err.code = json.code;
+    throw err;
   }
   return json.data;
 }

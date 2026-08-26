@@ -51,7 +51,18 @@ export const SEED_CLAUSES: Clause[] = [
     tags: ['身份认证', '暴力破解防护'],
   },
   {
+    clauseId: '5.2',
+    standardVersion: STANDARD_VERSION,
+    title: '权限分离',
+    chapter: '5.2',
+    description: '系统应区分管理员与普通用户权限，防止越权操作。',
+    level: 'L2',
+    defaultSeverity: 'middle',
+    tags: ['授权'],
+  },
+  {
     clauseId: '5.2-1',
+    parentId: '5.2',
     standardVersion: STANDARD_VERSION,
     chapter: '5.2',
     title: '权限分离至少区分管理员与普通用户',

@@ -17,6 +17,7 @@ type ProjectWithRun = Project & { latestRun?: ProjectRun | null };
 export default function Projects() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const [keyword, setKeyword] = useState('');
   const [projects, setProjects] = useState<ProjectWithRun[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [standards, setStandards] = useState<Standard[]>([]);
@@ -102,6 +103,13 @@ export default function Projects() {
       <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Typography.Title level={4} style={{ margin: 0 }}>测试项目</Typography.Title>
         <Space>
+          <Input.Search
+            allowClear
+            placeholder="搜索项目名称/描述"
+            style={{ width: 220 }}
+            onSearch={setKeyword}
+            onChange={(e) => { if (!e.target.value) setKeyword(''); }}
+          />
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新建项目</Button>
         </Space>
@@ -114,7 +122,10 @@ export default function Projects() {
       ) : (
         <Table
           rowKey="id"
-          dataSource={projects}
+          dataSource={projects.filter((p: { name?: string; description?: string }) =>
+            !keyword ||
+            (p.name ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
+            (p.description ?? '').toLowerCase().includes(keyword.toLowerCase()))}
           onRow={(p) => ({
             onClick: () => navigate(`/projects/${p.id}`),
             onKeyDown: (e) => keyDown(e, p.id),

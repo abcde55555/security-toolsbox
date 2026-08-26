@@ -136,7 +136,7 @@ export default function HumanStepCard({
           </Typography.Text>
           {step.functionModule && <Tag>{step.functionModule}</Tag>}
           {step.completed ? (
-            <Tag icon={<CheckCircleOutlined />} color="success">✅ Agent 已收到，继续执行中</Tag>
+            <Tag icon={<CheckCircleOutlined />} color="success">Agent 已收到，继续执行中</Tag>
           ) : (
             <Tag color="warning">待人工处理</Tag>
           )}

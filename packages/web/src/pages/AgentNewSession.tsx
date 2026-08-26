@@ -81,6 +81,7 @@ export default function AgentNewSession() {
       .then(setTree)
       .catch(() => setTree([]))
       .finally(() => setLoadingTree(false));
+    setChecked([]);
   }, [standardId]);
 
   const leafCount = useMemo(() => {
@@ -118,6 +119,12 @@ export default function AgentNewSession() {
       message.success('会话已创建');
       navigate(`/agent/${session.id}`);
     } catch (e) {
+      // antd 校验失败 reject 的是错误字段对象而非 Error——跳回表单步让用户看到红字
+      if (e && typeof e === 'object' && !Array.isArray(e) && !(e instanceof Error)) {
+        setStep(1);
+        message.warning('请先补全第 2 步的必填信息（品牌 / 型号）');
+        return;
+      }
       if (e instanceof Error && e.message) reportError(e);
     } finally {
       setCreating(false);
@@ -157,7 +164,9 @@ export default function AgentNewSession() {
               />
             </div>
             {standards.length === 0 && (
-              <Empty description="暂无标准，请先在系统中创建标准并导入条款" />
+              <Empty description="暂无标准——先去创建标准并导入条款，再回到这里新建会话">
+                <Button type="primary" onClick={() => navigate('/clauses')}>去创建标准</Button>
+              </Empty>
             )}
           </Space>
         )}
@@ -205,7 +214,7 @@ export default function AgentNewSession() {
 
         {step === 2 && (
           <Form form={form} layout="vertical" style={{ maxWidth: 560 }}>
-            <Alert type="info" showIcon style={{ marginBottom: 12 }} message="设备档案帮助 Agent 检索相关经验并规划接入步骤，可后续补充。" />
+            <Alert type="info" showIcon style={{ marginBottom: 12 }} message="设备档案帮助 Agent 检索相关经验并规划接入步骤，品牌与型号为必填。" />
             <Form.Item name="brand" label="品牌" rules={[{ required: true, message: '请填写品牌' }]}>
               <Input placeholder="如：Xiaomi / Little Genius" />
             </Form.Item>

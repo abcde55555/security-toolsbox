@@ -99,9 +99,17 @@ export class AgentRepository {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const offset = Math.max(0, opts.offset ?? 0);
     const rows = this.db
-      .prepare(`SELECT * FROM agent_sessions ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`)
+      .prepare(`SELECT s.*, p.name AS __projectName FROM agent_sessions s
+                LEFT JOIN projects p ON p.id = s.projectId
+                ${where.replace(/projectId/g, 's.projectId').replace(/status/g, 's.status')}
+                ORDER BY s.createdAt DESC LIMIT ? OFFSET ?`)
       .all(...params, limit, offset) as Record<string, unknown>[];
-    return { items: rows.map((r) => this.mapSession(r)), total };
+    const items = rows.map((r) => {
+      const session = this.mapSession(r);
+      const projectName = typeof r.__projectName === 'string' ? r.__projectName : undefined;
+      return projectName ? { ...session, projectName } : session;
+    });
+    return { items, total };
   }
 
   updateStatus(id: string, status: AgentSessionStatus, lastError?: string): void {

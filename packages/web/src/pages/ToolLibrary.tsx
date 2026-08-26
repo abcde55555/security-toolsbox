@@ -241,7 +241,15 @@ export default function ToolLibrary() {
         {loading ? (
           <Spin />
         ) : tools.length === 0 ? (
-          <Empty description="暂无工具" />
+          keyword || type || category ? (
+            <Empty description="没有匹配的工具——试试清除筛选或切换分类">
+              <Button size="small" onClick={() => { setKeyword(''); setType(undefined); setCategory(undefined); }}>
+                清除筛选
+              </Button>
+            </Empty>
+          ) : (
+            <Empty description="暂无工具——点击右上角「注册工具」接入你的第一条命令或模组" />
+          )
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12 }}>
             {tools.map((t) => {
