@@ -63,6 +63,15 @@ export class ResultRepository {
       .all(stepRunId) as Record<string, unknown>[]).map((r) => this.mapEvidence(r));
   }
 
+  /** 项目维度的证据总数（evidences.projectId 由各写入方维护）。 */
+  countByProject(projectId: string): number {
+    return (
+      this.db.prepare('SELECT COUNT(*) c FROM evidences WHERE projectId = ?').get(projectId) as {
+        c: number;
+      }
+    ).c;
+  }
+
   private mapEvidence(r: Record<string, unknown>): EvidenceRow {
     return {
       id: String(r.id),

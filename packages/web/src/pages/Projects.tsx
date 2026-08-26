@@ -1,13 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import {
-  Layout, Card, Button, Tag, Space, Typography, Empty, Table, Modal, Form, Input, Select, Skeleton,
+  Layout, Card, Button, Tag, Space, Typography, Table, Modal, Form, Input, Select, Skeleton,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, RightOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Project, Template, ProjectRun, Standard } from '@en18031/shared';
 import { ProjectsApi, TemplatesApi, StandardsApi } from '../api/endpoints';
 import { reportError } from '../api/client';
 import { runStatusColor, runStatusText, projectStatusColor, projectStatusText, isTerminalStatus } from '../utils/ui';
+import EmptyGuide from '../components/common/EmptyGuide';
+import { space, cardBase, pageDescriptionStyle } from '../theme/design-tokens';
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -98,13 +100,25 @@ export default function Projects() {
     }
   };
 
+  // Keyword-filtered view; also reused for the in-table filtered empty state.
+  const visible = projects.filter((p) =>
+    !keyword ||
+    (p.name ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
+    (p.description ?? '').toLowerCase().includes(keyword.toLowerCase()));
+
   return (
-    <Content style={{ padding: 16, overflow: 'auto', height: '100%' }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>测试项目</Typography.Title>
+    <Content style={{ padding: space.lg, overflow: 'auto', height: '100%' }}>
+      <Space align="start" style={{ marginBottom: space.lg, width: '100%', justifyContent: 'space-between' }}>
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>测试项目</Typography.Title>
+          <Typography.Text type="secondary" style={pageDescriptionStyle}>
+            合规测试从项目开始：选择标准与模板创建项目，跟踪最近一次运行进度，点击行进入详情执行采集与报告。
+          </Typography.Text>
+        </div>
         <Space>
           <Input.Search
             allowClear
+            value={keyword}
             placeholder="搜索项目名称/描述"
             style={{ width: 220 }}
             onSearch={setKeyword}
@@ -116,16 +130,29 @@ export default function Projects() {
       </Space>
 
       {loading ? (
-        <Card><Skeleton active paragraph={{ rows: 5 }} /></Card>
+        <Card style={cardBase}><Skeleton active paragraph={{ rows: 5 }} /></Card>
       ) : projects.length === 0 ? (
-        <Empty description="暂无项目，请先创建" />
+        <Card style={cardBase}>
+          <EmptyGuide
+            title="还没有测试项目"
+            hint="创建项目并绑定测试模板后，即可执行采集、Agent 深度测试并生成合规报告。"
+            action={{ label: '新建项目', onClick: () => setOpen(true) }}
+          />
+        </Card>
       ) : (
         <Table
           rowKey="id"
-          dataSource={projects.filter((p: { name?: string; description?: string }) =>
-            !keyword ||
-            (p.name ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
-            (p.description ?? '').toLowerCase().includes(keyword.toLowerCase()))}
+          dataSource={visible}
+          locale={{
+            emptyText: (
+              <EmptyGuide
+                compact
+                title={`没有匹配「${keyword}」的项目`}
+                hint="换个关键词试试，或清除筛选查看全部项目。"
+                action={{ label: '清除筛选', onClick: () => setKeyword('') }}
+              />
+            ),
+          }}
           onRow={(p) => ({
             onClick: () => navigate(`/projects/${p.id}`),
             onKeyDown: (e) => keyDown(e, p.id),
@@ -135,6 +162,16 @@ export default function Projects() {
             'aria-label': `打开项目 ${p.name}`,
           })}
           columns={[
+            { title: '操作', key: 'open', width: 88, render: (_, r) => (
+              <Button
+                type="link"
+                size="small"
+                icon={<RightOutlined />}
+                onClick={(e) => { e.stopPropagation(); navigate(`/projects/${r.id}`); }}
+              >
+                打开
+              </Button>
+            ) },
             { title: '项目名称', dataIndex: 'name', render: (v, r) => (
               <Space direction="vertical" size={0}>
                 <Typography.Text strong>{v}</Typography.Text>
@@ -155,7 +192,7 @@ export default function Projects() {
             { title: '创建时间', dataIndex: 'createdAt', render: (v: string) => new Date(v).toLocaleString('zh-CN') },
           ]}
           pagination={{ pageSize: 20 }}
-          scroll={{ x: 760 }}
+          scroll={{ x: 860 }}
         />
       )}
 

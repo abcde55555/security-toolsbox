@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getServices } from '../services/index.js';
+import { buildWorkbench } from '../services/workbenchService.js';
 import { ok, requireRole, handleError, pagingFromQuery } from './helpers.js';
 import { readFile, access } from 'node:fs/promises';
 
@@ -70,6 +71,18 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       handleError(reply, e);
     }
   });
+
+  // 项目工作台聚合端点：一次返回工作台一屏所需数据 + 服务端推导的下一步建议。
+  // 响应结构见 docs/api-workbench.md。
+  app.get('/api/projects/:id/workbench', { preHandler: requireRole('auditor') }, async (req, reply) => {
+    try {
+      const { id } = req.params as { id: string };
+      ok(reply, buildWorkbench(getServices().repos, id));
+    } catch (e) {
+      handleError(reply, e);
+    }
+  });
+
 
   app.put('/api/projects/:id/variables', { preHandler: requireRole('auditor') }, async (req, reply) => {
     try {
