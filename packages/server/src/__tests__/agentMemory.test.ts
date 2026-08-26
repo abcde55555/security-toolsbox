@@ -113,3 +113,27 @@ describe('listPendingHumanSteps（真实 schema 回归）', () => {
     expect(todos[0].instruction).toContain('测试模式');
   });
 });
+
+describe('findInterruptedHumanStep（假等待自愈口径）', () => {
+  it('cancelled 的人工步骤也算中断产物', () => {
+    const { repos } = createInMemoryRepositories();
+    const project = repos.projects.create({
+      name: '自愈项目', templateId: 't1', templateVersionSnapshot: 1,
+      standardVersion: 'EN18031', targetComplianceLevel: 'L1', variables: {}, createdBy: 'tester',
+    });
+    const run = repos.projects.createRun({ projectId: project.id, startedBy: 'tester' } as never);
+    const session = repos.agent.createSession({
+      projectId: project.id, projectRunId: run.id, standardVersion: 'EN18031',
+      selectedClauses: [], authorizedTools: [], deviceProfile: {}, createdBy: 'tester',
+    } as never);
+    repos.projects.createAgentStepRun({
+      id: 'h9', projectRunId: run.id, stepId: 'h9', stepSnapshot: {},
+      stepType: 'human_instruction', phase: 'onboarding', agentSessionId: session.id,
+      instruction: '重启前的等待步骤',
+    });
+    repos.projects.updateStepRun('h9', { status: 'cancelled' });
+    const hit = repos.projects.findInterruptedHumanStep(session.id);
+    expect(hit?.stepRunId).toBe('h9');
+    expect(repos.projects.listPendingHumanSteps()).toHaveLength(0); // 待办列表不受影响
+  });
+});

@@ -31,12 +31,23 @@ export default function AgentSessionDetail() {
     [agent.verdicts],
   );
 
+  const status = agent.session?.status;
+  const sessionClosed = status === 'done' || status === 'error' || status === 'aborted';
+  const waitingHuman = status === 'waiting_human';
+
   const send = async () => {
     if (!chatInput.trim()) return;
+    if (sessionClosed) {
+      message.warning('该会话已结束——请新建一个 Agent 会话继续评估。');
+      return;
+    }
     setSending(true);
     try {
       await agent.sendMessage(chatInput.trim());
       setChatInput('');
+      if (waitingHuman) {
+        message.info('Agent 正在等待人工步骤完成，请先处理上方的待办卡片；你的消息已记录在案。');
+      }
     } catch (e) {
       message.error(e instanceof Error ? e.message : '发送失败');
     } finally {
@@ -160,12 +171,19 @@ export default function AgentSessionDetail() {
         <div style={{ padding: '8px 12px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
           <Space.Compact style={{ width: '100%' }}>
             <Input
-              placeholder="向 Agent 发送补充信息或指令…"
+              placeholder={
+                sessionClosed
+                  ? '会话已结束——请新建会话继续'
+                  : waitingHuman
+                    ? 'Agent 正在等待人工步骤完成…（消息将记录在案）'
+                    : '向 Agent 发送补充信息或指令…'
+              }
+              disabled={sessionClosed}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onPressEnter={() => void send()}
             />
-            <Button type="primary" icon={<SendOutlined />} loading={sending} onClick={send}>发送</Button>
+            <Button type="primary" icon={<SendOutlined />} disabled={sessionClosed} loading={sending} onClick={send}>发送</Button>
           </Space.Compact>
         </div>
       </Content>

@@ -346,6 +346,20 @@ export class ProjectRepository {
     });
   }
 
+  /** 会话内最近一条未正常收尾的人工步骤（running/cancelled/pending…均视为执行链中断产物） */
+  findInterruptedHumanStep(sessionId: string): { stepRunId: string; instruction: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT id AS stepRunId, instruction FROM step_runs
+         WHERE agentSessionId=? AND stepType='human_instruction'
+           AND status NOT IN ('success','fail','timeout')
+         ORDER BY COALESCE(startedAt, finishedAt) DESC LIMIT 1`,
+      )
+      .get(sessionId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return { stepRunId: String(row.stepRunId), instruction: String(row.instruction ?? '') };
+  }
+
   getStepRun(id: string): StepRun | null {
     const row = this.db.prepare('SELECT * FROM step_runs WHERE id = ?').get(id) as
       | Record<string, unknown>

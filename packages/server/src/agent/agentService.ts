@@ -217,10 +217,41 @@ export class AgentService {
       entityId: sessionId,
       after: { length: content.length },
     });
-    // For P1, messages to an idle/done session are recorded but do not restart
-    // a fresh loop automatically; the frontend calls start for new sessions.
-    if (session.status === 'planning' || session.status === 'waiting_confirm') {
+    const status = this.getSession(sessionId).status;
+    if (status === 'planning' || status === 'waiting_confirm') {
       this.start(sessionId, userId, { message: content });
+      return ev;
+    }
+    if (status === 'waiting_human') {
+      // 区分「活等待」与「假等待」（服务重启导致内存等待表丢失、循环已死）
+      const step = this.repos.projects.findInterruptedHumanStep(sessionId);
+      if (step && !this.coordinator.isPending(step.stepRunId)) {
+        // 假等待自愈：标记中断步骤、恢复可启动状态、带着这条消息重启循环
+        this.repos.projects.updateStepRun(step.stepRunId, {
+          status: 'failed',
+          error: { code: 'ORPHANED_HUMAN_STEP', message: '服务重启导致等待丢失，已按用户消息自动恢复执行' },
+        } as never);
+        this.repos.agent.updateStatus(sessionId, 'planning', '检测到执行链中断，已自动恢复');
+        this.bus.emit('agent:session', { event: 'agent:session', sessionId, status: 'running', phase: this.getSession(sessionId).phase });
+        void this.start(sessionId, userId, { message: content });
+        return ev;
+      }
+      // 活等待：消息仅入档；前端会提示先处理人工待办卡片
+      return ev;
+    }
+    if (['done', 'error', 'aborted'].includes(status)) {
+      // 终态不静默：写入一条 assistant 提示让用户在前端看到原因
+      const tip = this.repos.agent.createEvent({
+        sessionId,
+        type: 'model_message',
+        role: 'assistant',
+        content:
+          status === 'done'
+            ? '该会话已完成归档。如需继续评估，请新建一个 Agent 会话（历史证据与记忆仍会被参考）。'
+            : `该会话已结束（${status}）。请查看错误原因后新建会话重试。`,
+      });
+      this.bus.emit('agent:message', { sessionId, role: 'assistant', content: tip.content ?? '', id: tip.id, seq: tip.seq });
+      return ev;
     }
     return ev;
   }
