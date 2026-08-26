@@ -146,11 +146,15 @@ function applyEvent(state: AgentSessionState, ev: AgentEvent): AgentSessionState
       return { ...state, steps };
     }
     case 'human_step': {
-      // `content` is the human instruction in markdown, not JSON. The step
-      // title was already set by the preceding step_started event.
+      // 同一事件类型两种语义，按 toolStatus 分流：
+      //  requested  → content=指令（创建等待卡）
+      //  completed  → content=提交说明（闭环：completed=true）
       const meta = tryParse<{ stepRunId?: string }>(ev.content);
       const stepRunId = ev.stepRunId ?? meta?.stepRunId ?? '';
       if (!stepRunId) return state;
+      if (ev.toolStatus === 'completed') {
+        return applyHumanCompleted(state, stepRunId, undefined, ev.content ?? undefined);
+      }
       return applyHumanRequested(state, {
         stepRunId,
         instruction: ev.content ?? '',

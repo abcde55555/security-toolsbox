@@ -259,8 +259,10 @@ export class AgentService {
   completeHumanStep(
     sessionId: string,
     stepRunId: string,
-    input: { note?: string; fileRefs?: string[] },
+    input: { note?: string; outcome?: string; fileRefs?: string[] },
     userId: string,
+    // outcome 是前端卡片的主字段；note 兼容旧调用。二者取其一作为成果说明。
+
   ): void {
     const session = this.getSession(sessionId);
     const stepRun = this.repos.projects.getStepRun(stepRunId);
@@ -268,7 +270,7 @@ export class AgentService {
       throw new AppError(9004, '人工步骤不存在或不属于此会话', undefined, 404);
     }
     const ok = this.coordinator.complete(stepRunId, {
-      note: input.note,
+      note: input.outcome ?? input.note,
       fileRefs: input.fileRefs ?? [],
       completedBy: userId,
     });
@@ -285,9 +287,10 @@ export class AgentService {
         });
         return;
       }
-      // ② 孤儿：服务重启导致内存等待表丢失、执行循环已不存在 →
+      // ② 中断产物（服务重启/异常终止遗留的 running|pending|cancelled|failed 人工步骤）：
       //    把结果落库、明确告知执行链已中断（而非误导性的“不在等待状态”）
-      if (sr.stepType === 'human_instruction' && (sr.status === 'running' || sr.status === 'pending')) {
+      const interrupted = this.repos.projects.findInterruptedHumanStep(sessionId);
+      if (interrupted?.stepRunId === stepRunId) {
         const fileRefs = input.fileRefs ?? [];
         for (const fileRef of fileRefs) {
           this.repos.results.insertEvidence({
@@ -308,12 +311,21 @@ export class AgentService {
           error: { code: 'ORPHANED_HUMAN_STEP', message: `结果已记录：${input.note ?? '(无说明)'}` } as never,
         });
         this.repos.agent.updateStatus(sessionId, 'error', '服务器重启导致执行链中断；人工步骤结果已保存，请重新启动会话继续');
+        // 落一条 completed 事件：刷新后前端回放才能还原闭环状态
+        this.repos.agent.createEvent({
+          sessionId,
+          type: 'human_step',
+          role: 'assistant',
+          content: input.outcome ?? input.note ?? '人工步骤已完成（执行链恢复）',
+          stepRunId,
+          toolStatus: 'completed',
+        });
         this.bus.emit('agent:human_step_completed', {
           event: 'agent:human_step_completed',
           sessionId,
           stepRunId,
           fileRefs,
-          note: input.note,
+          note: input.outcome ?? input.note,
         });
         this.bus.emit('agent:error', {
           event: 'agent:error',

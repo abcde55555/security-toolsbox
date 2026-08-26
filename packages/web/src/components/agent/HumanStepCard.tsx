@@ -136,7 +136,7 @@ export default function HumanStepCard({
           </Typography.Text>
           {step.functionModule && <Tag>{step.functionModule}</Tag>}
           {step.completed ? (
-            <Tag icon={<CheckCircleOutlined />} color="success">已完成</Tag>
+            <Tag icon={<CheckCircleOutlined />} color="success">✅ Agent 已收到，继续执行中</Tag>
           ) : (
             <Tag color="warning">待人工处理</Tag>
           )}
@@ -173,6 +173,27 @@ export default function HumanStepCard({
               ),
             },
           ]}
+        />
+      )}
+
+      {step.completed && (
+        <Alert
+          style={{ marginTop: 10 }}
+          type="success"
+          showIcon
+          message="已闭环：Agent 确认收到你的提交"
+          description={
+            <div style={{ fontSize: 12 }}>
+              <div>
+                {step.completedAt ? `提交时间：${new Date(step.completedAt).toLocaleString()}` : null}
+                {step.fileRefs?.length ? ` · 附件 ${step.fileRefs.length} 份` : ''}
+              </div>
+              {step.outcome && <div style={{ marginTop: 4 }}><MiniMarkdown text={step.outcome} /></div>}
+              <div style={{ marginTop: 6, color: '#64748b' }}>
+                无需更多操作——Agent 已带着这些信息继续评估；如需补充，直接在下方输入框留言即可。
+              </div>
+            </div>
+          }
         />
       )}
 

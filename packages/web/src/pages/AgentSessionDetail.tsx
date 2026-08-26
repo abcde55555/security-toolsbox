@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Layout, Space, Button, Tabs, Typography, Alert, Input, Tag, Spin, message } from 'antd';
-import { ArrowLeftOutlined, SendOutlined, StopOutlined, PlayCircleOutlined, ExperimentOutlined , LoadingOutlined } from '@ant-design/icons';
+import { Layout, Space, Button, Tabs, Typography, Alert, Input, Tag, Spin, message, Drawer, Badge } from 'antd';
+import { ArrowLeftOutlined, SendOutlined, StopOutlined, PlayCircleOutlined, ExperimentOutlined , LoadingOutlined , UserOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAgentSession } from '../hooks/useAgentSession';
 import { useMockAgentSession } from '../hooks/useMockAgentSession';
@@ -25,6 +25,8 @@ export default function AgentSessionDetail() {
 
   const [chatInput, setChatInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [todoOpen, setTodoOpen] = useState(false);
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
 
   const pendingCount = useMemo(
     () => agent.verdicts.filter((v) => v.reviewStatus === 'pending_review').length,
@@ -103,6 +105,11 @@ export default function AgentSessionDetail() {
               {useMock && <Tag color="purple">MOCK 演示数据</Tag>}
             </Space>
             <Space>
+              {(agent.state.humanSteps.size > 0) && (
+                <Badge count={[...agent.state.humanSteps.values()].filter((h) => !h.completed).length} size="small">
+                  <Button size="small" icon={<UserOutlined />} onClick={() => setTodoOpen(true)}>人工待办</Button>
+                </Badge>
+              )}
               {agent.session?.status === 'running' || agent.session?.status === 'waiting_human' ? (
                 <Button size="small" danger icon={<StopOutlined />} onClick={() => void agent.abort()}>中止</Button>
               ) : agent.session?.status === 'planning' ? (
@@ -125,6 +132,20 @@ export default function AgentSessionDetail() {
           />
         </div>
 
+        {bottomCollapsed ? (
+          <div
+            onClick={() => setBottomCollapsed(false)}
+            style={{
+              position: 'absolute', right: 18, bottom: 64, zIndex: 30,
+              background: '#1e293b', color: '#fff', borderRadius: 16,
+              padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+            }}
+          >
+            ▲ 工作上下文{agent.state.humanSteps.size ? ` · ${[...agent.state.humanSteps.values()].filter((h) => !h.completed).length} 待办` : ''}
+          </div>
+        ) : (
+        <>
         {Object.values(agent.state.streaming).some((b) => b.text.length > 0 || b.reasoning.length > 0) && (
           <div
             style={{
@@ -189,6 +210,14 @@ export default function AgentSessionDetail() {
           }}
         />
 
+          <div style={{ textAlign: 'center', padding: '0 0 6px', background: '#fff' }}>
+            <Button type="text" size="small" onClick={() => setBottomCollapsed(true)}>
+              ⌄ 收起底部面板（不挡时间线）
+            </Button>
+          </div>
+          </>
+          )}
+
         <div style={{ padding: '8px 12px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
           <Space.Compact style={{ width: '100%' }}>
             <Input
@@ -208,6 +237,55 @@ export default function AgentSessionDetail() {
           </Space.Compact>
         </div>
       </Content>
+
+      <Drawer
+        title={`🙋 人工待办（${[...agent.state.humanSteps.values()].filter((h) => !h.completed).length}）`}
+        placement="right"
+        width={400}
+        open={todoOpen}
+        onClose={() => setTodoOpen(false)}
+      >
+        {[...agent.state.humanSteps.values()].filter((h) => !h.completed).length === 0 ? (
+          <Typography.Text type="secondary">当前没有需要你处理的步骤 🎉</Typography.Text>
+        ) : (
+          [...agent.state.humanSteps.values()]
+            .filter((h) => !h.completed)
+            .map((h) => (
+              <div
+                key={h.stepRunId}
+                onClick={() => {
+                  setTodoOpen(false);
+                  setTimeout(() => {
+                    const el = document.getElementById(`human-card-${h.stepRunId}`);
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    (el as HTMLElement | null)?.animate?.(
+                      [{ boxShadow: '0 0 0 3px rgba(217,119,6,.7)' }, { boxShadow: '0 0 0 0 rgba(217,119,6,0)' }],
+                      { duration: 1200, iterations: 2 },
+                    );
+                  }, 120);
+                }}
+                style={{
+                  padding: 10, marginBottom: 8, borderRadius: 8, cursor: 'pointer',
+                  background: '#fffbeb', border: '1px solid #fde68a',
+                }}
+              >
+                <Typography.Text strong style={{ fontSize: 13 }}>{h.title || '人工操作步骤'}</Typography.Text>
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                  {h.instruction}
+                </div>
+                {h.expectedOutcome && (
+                  <div style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>预期：{h.expectedOutcome}</div>
+                )}
+                {h.evidenceRequired && (
+                  <Tag color="orange" style={{ marginTop: 6 }}>需上传证据</Tag>
+                )}
+              </div>
+            ))
+        )}
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          点击任意待办将定位到对应卡片；完成后卡片会显示「Agent 已收到」。
+        </Typography.Text>
+      </Drawer>
 
       <Sider width={380} theme="light" style={{ borderLeft: '1px solid #e2e8f0', overflow: 'auto', background: '#fff' }}>
         <Tabs

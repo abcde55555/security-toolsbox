@@ -26,6 +26,8 @@ const messageSchema = z.object({
 
 const completeHumanStepSchema = z.object({
   note: z.string().optional(),
+  /** 用户在富文本卡片里填写的成果说明（前端主字段） */
+  outcome: z.string().max(8000).optional(),
   fileRefs: z.array(z.string()).optional(),
 });
 
