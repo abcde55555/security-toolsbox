@@ -27,20 +27,27 @@ import { useNotifications } from './hooks/useNotifications';
 
 const { Header, Content } = Layout;
 
-function useHumanTodoCount(): number {
-  const [count, setCount] = useState(0);
+interface HumanTodoItem {
+  stepRunId: string;
+  sessionId: string;
+  sessionName: string;
+  instruction: string;
+}
+
+function useHumanTodos(): HumanTodoItem[] {
+  const [items, setItems] = useState<HumanTodoItem[]>([]);
   useEffect(() => {
     let alive = true;
     const load = () =>
       fetch('/api/agent/human-todos')
         .then((r) => r.json())
-        .then((d) => { if (alive) setCount(Array.isArray(d.data) ? d.data.length : 0); })
+        .then((d) => { if (alive) setItems(Array.isArray(d.data) ? d.data : []); })
         .catch(() => {});
     load();
     const t = setInterval(load, 15000);
     return () => { alive = false; clearInterval(t); };
   }, []);
-  return count;
+  return items;
 }
 
 import { useState, useEffect } from 'react';
@@ -184,17 +191,50 @@ function NotificationBell() {
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const humanTodos = useHumanTodoCount();
+  const humanTodos = useHumanTodos();
   const menuItems = navItems.map((n) =>
     n.key === '__AGENT__'
       ? {
           ...n,
           key: '/agent',
           label: (
-            <Space size={6}>
-              <span>Agent 测试</span>
-              {humanTodos > 0 && <Badge count={humanTodos} size="small" color="#dc2626" title={`${humanTodos} 个人工步骤待处理`} />}
-            </Space>
+            <Popover
+              trigger="hover"
+              placement="right"
+              title={`待人工处理（${humanTodos.length}）`}
+              content={
+                humanTodos.length === 0 ? (
+                  <Typography.Text type="secondary">暂无待办 🎉</Typography.Text>
+                ) : (
+                  <div style={{ maxWidth: 320, maxHeight: 300, overflow: 'auto' }}>
+                    {humanTodos.map((t) => (
+                      <div
+                        key={t.stepRunId}
+                        style={{ padding: '6px 4px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.location.assign(`/agent/${t.sessionId}`);
+                        }}
+                      >
+                        <Typography.Text strong style={{ fontSize: 12 }}>
+                          {t.sessionName || t.sessionId.slice(0, 8)}
+                        </Typography.Text>
+                        <div style={{ fontSize: 12, color: '#475569' }}>
+                          {t.instruction.length > 60 ? `${t.instruction.slice(0, 60)}…` : t.instruction}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              }
+            >
+              <Space size={6}>
+                <span>Agent 测试</span>
+                {humanTodos.length > 0 && (
+                  <Badge count={humanTodos.length} size="small" color="#dc2626" />
+                )}
+              </Space>
+            </Popover>
           ),
         }
       : n,

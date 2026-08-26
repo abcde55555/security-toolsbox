@@ -116,6 +116,8 @@ export default function HumanStepCard({
   return (
     <div
       ref={cardRef}
+      id={`human-card-${step.stepRunId}`}
+      data-step-run-id={step.stepRunId}
       className={pulse ? 'agent-human-pulse' : undefined}
       style={{
         border: `2px solid ${border}`,

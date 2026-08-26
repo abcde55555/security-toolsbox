@@ -15,6 +15,13 @@ const PHASE_LABEL: Record<string, string> = {
   review: '人工复核',
 };
 
+export interface WorkTodoItem {
+  stepRunId: string;
+  title: string;
+  /** 人类需要提供什么（instruction 全文/摘要） */
+  detail?: string;
+}
+
 export interface AgentWorkbenchProps {
   messages: TranscriptMessage[];
   phase?: string;
@@ -23,14 +30,63 @@ export interface AgentWorkbenchProps {
   runningSteps?: number;
   evidenceCount?: number;
   verdictCount?: number;
+  /** 等待人工的步骤清单（需要人类提供的信息） */
+  humanTodos?: WorkTodoItem[];
+  /** 正在执行的步骤清单 */
+  runningList?: WorkTodoItem[];
+  /** 点击待办项时滚动到对应卡片 */
+  onFocusStep?: (stepRunId: string) => void;
 }
 
 /**
  * 底部工作台面板：不再把原始对话流水冒充「规划记录」，
  * 而是先给执行概览（阶段/步骤/证据/判定），对话原文降级为「模型交互明细」。
  */
+function TodoList({ items, kind, onFocus }: { items: WorkTodoItem[]; kind: 'human' | 'run'; onFocus?: (id: string) => void }) {
+  if (items.length === 0) {
+    return (
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {kind === 'human' ? '暂无——当前不需要你提供信息 🎉' : '暂无正在执行的步骤'}
+      </Typography.Text>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {items.map((it) => (
+        <div
+          key={it.stepRunId}
+          id={`workbench-todo-${it.stepRunId}`}
+          onClick={() => onFocus?.(it.stepRunId)}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            background: kind === 'human' ? '#fffbeb' : '#f8fafc',
+            border: `1px solid ${kind === 'human' ? '#fde68a' : '#e2e8f0'}`,
+            cursor: onFocus ? 'pointer' : 'default',
+          }}
+        >
+          <Typography.Text strong style={{ fontSize: 13 }}>
+            {kind === 'human' ? '🙋 ' : '⚙️ '}
+            {it.title}
+          </Typography.Text>
+          {it.detail && (
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 2, whiteSpace: 'pre-wrap' }}>
+              {it.detail.length > 120 ? `${it.detail.slice(0, 120)}…` : it.detail}
+            </div>
+          )}
+          {kind === 'human' && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              点击定位到卡片 ↓
+            </Typography.Text>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AiTranscriptCollapse(props: AgentWorkbenchProps) {
-  const { messages, phase, status, stepCount, runningSteps, evidenceCount, verdictCount } = props;
+  const { messages, phase, status, stepCount, runningSteps, evidenceCount, verdictCount, humanTodos, runningList, onFocusStep } = props;
   if (messages.length === 0 && !stepCount) return null;
   return (
     <Collapse
@@ -49,29 +105,48 @@ export default function AiTranscriptCollapse(props: AgentWorkbenchProps) {
             </Space>
           ),
           children: (
-            <Row gutter={16}>
-              <Col span={6}>
-                <Statistic title="步骤" value={stepCount ?? 0} valueStyle={{ fontSize: 18 }} prefix={<FileSearchOutlined />} />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="进行中"
-                  value={runningSteps ?? 0}
-                  valueStyle={{ fontSize: 18, color: (runningSteps ?? 0) > 0 ? '#2563eb' : undefined }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic title="证据" value={evidenceCount ?? 0} valueStyle={{ fontSize: 18 }} />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="判定草案"
-                  value={verdictCount ?? 0}
-                  valueStyle={{ fontSize: 18 }}
-                  prefix={<CheckSquareOutlined />}
-                />
-              </Col>
-            </Row>
+            <>
+              <Row gutter={16} style={{ marginBottom: humanTodos?.length ? 12 : 8 }}>
+                <Col span={6}>
+                  <Statistic title="步骤" value={stepCount ?? 0} valueStyle={{ fontSize: 16 }} prefix={<FileSearchOutlined />} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="进行中"
+                    value={runningSteps ?? 0}
+                    valueStyle={{ fontSize: 16, color: (runningSteps ?? 0) > 0 ? '#2563eb' : undefined }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="证据" value={evidenceCount ?? 0} valueStyle={{ fontSize: 16 }} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="判定草案"
+                    value={verdictCount ?? 0}
+                    valueStyle={{ fontSize: 16 }}
+                    prefix={<CheckSquareOutlined />}
+                  />
+                </Col>
+              </Row>
+              {(humanTodos?.length ?? 0) > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <Typography.Text strong style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
+                    🙋 需要你提供（{humanTodos!.length}）
+                  </Typography.Text>
+                  <TodoList items={humanTodos!} kind="human" onFocus={onFocusStep} />
+                </div>
+              )}
+              {(runningList?.length ?? 0) > 0 && (
+                <div>
+                  <Typography.Text strong style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
+                    ⚙️ 正在执行（{runningList!.length}）
+                  </Typography.Text>
+                  <TodoList items={runningList!} kind="run" />
+                </div>
+              )}
+              {!humanTodos?.length && !runningList?.length && null}
+            </>
           ),
         },
         {

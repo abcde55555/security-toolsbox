@@ -166,6 +166,27 @@ export default function AgentSessionDetail() {
           runningSteps={[...agent.state.steps.values()].filter((st) => st.status === 'running').length}
           evidenceCount={agent.state.evidences.length}
           verdictCount={agent.state.verdicts.length}
+          humanTodos={[...agent.state.humanSteps.values()]
+            .filter((h) => !h.completed)
+            .map((h) => ({
+              stepRunId: h.stepRunId,
+              title: h.title || '人工操作步骤',
+              detail: [h.instruction, h.expectedOutcome ? `预期：${h.expectedOutcome}` : null]
+                .filter(Boolean)
+                .join('\n'),
+            }))}
+          runningList={[...agent.state.steps.values()]
+            .filter((st) => st.status === 'running' && st.stepType !== 'human_instruction')
+            .map((st) => ({ stepRunId: st.id, title: st.title || st.functionModule || '执行中步骤', detail: st.instruction }))}
+          onFocusStep={(stepRunId) => {
+            const el = document.getElementById(`human-card-${stepRunId}`) ?? document.querySelector(`[data-step-run-id="${stepRunId}"]`);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el?.scrollIntoView({ block: 'center' });
+            (el as HTMLElement | null)?.animate?.(
+              [{ boxShadow: '0 0 0 3px rgba(37,99,235,.6)' }, { boxShadow: '0 0 0 0 rgba(37,99,235,0)' }],
+              { duration: 1200, iterations: 2 },
+            );
+          }}
         />
 
         <div style={{ padding: '8px 12px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>

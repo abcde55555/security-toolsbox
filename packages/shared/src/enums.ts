@@ -175,6 +175,7 @@ export const NOTIFICATION_STATUSES = ['unread', 'read', 'accepted', 'dismissed',
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
 export const AGENT_EVENT_TYPES = [
+  'step_started',
   'model_message',
   'tool_call',
   'tool_result',

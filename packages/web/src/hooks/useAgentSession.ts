@@ -129,10 +129,27 @@ function applyEvent(state: AgentSessionState, ev: AgentEvent): AgentSessionState
         durationMs: ev.latencyMs,
       });
     }
+    case 'step_started': {
+      // 回放路径：事件行 content 为结构化 JSON（与 live socket payload 同构）
+      const p = tryParse<{ stepRunId?: string; stepType?: string; phase?: string; title?: string }>(ev.content);
+      const stepRunId = ev.stepRunId ?? p?.stepRunId ?? '';
+      if (!stepRunId) return state;
+      const steps = upsertStep(state.steps, stepRunId, {
+        id: stepRunId,
+        status: 'running',
+        stepType: p?.stepType,
+        phase: p?.phase,
+        ...(p?.title ? { title: p.title } : {}),
+        startedAt: new Date().toISOString(),
+      });
+      if (steps === state.steps) return state;
+      return { ...state, steps };
+    }
     case 'human_step': {
       // `content` is the human instruction in markdown, not JSON. The step
-      // title was already set by the preceding step_started/tool_call event.
-      const stepRunId = ev.stepRunId ?? '';
+      // title was already set by the preceding step_started event.
+      const meta = tryParse<{ stepRunId?: string }>(ev.content);
+      const stepRunId = ev.stepRunId ?? meta?.stepRunId ?? '';
       if (!stepRunId) return state;
       return applyHumanRequested(state, {
         stepRunId,
