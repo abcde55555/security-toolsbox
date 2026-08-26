@@ -308,9 +308,10 @@ export class AgentService {
           status: 'success',
           percent: 100,
           artifacts: fileRefs,
-          error: { code: 'ORPHANED_HUMAN_STEP', message: `结果已记录：${input.note ?? '(无说明)'}` } as never,
+          error: { code: 'ORPHANED_HUMAN_STEP', message: `结果已记录：${input.outcome ?? input.note ?? '(无说明)'}` } as never,
         });
-        this.repos.agent.updateStatus(sessionId, 'error', '服务器重启导致执行链中断；人工步骤结果已保存，请重新启动会话继续');
+        // 置 planning 而非 error：让 start() 的状态守卫放行，带着提交结果自动恢复执行
+        this.repos.agent.updateStatus(sessionId, 'planning', '执行链曾中断；已记录人工步骤结果，正在自动恢复执行');
         // 落一条 completed 事件：刷新后前端回放才能还原闭环状态
         this.repos.agent.createEvent({
           sessionId,
@@ -327,17 +328,25 @@ export class AgentService {
           fileRefs,
           note: input.outcome ?? input.note,
         });
-        this.bus.emit('agent:error', {
-          event: 'agent:error',
-          sessionId,
-          message: '检测到服务重启：人工步骤结果已保存，但原执行循环已中断，请重新启动会话继续',
-        });
         this.repos.audit.insert({
           userId,
           action: 'agent.human_step_complete_orphan',
           entityType: 'step_run',
           entityId: stepRunId,
-          after: { fileCount: fileRefs.length, note: input.note },
+          after: { fileCount: fileRefs.length, note: input.outcome ?? input.note },
+        });
+        // 真闭环：把提交结果作为上下文注入，重启执行循环（失败则降级为可手动重试的状态）
+        const summary = input.outcome ?? input.note ?? '(用户提交了人工步骤结果)';
+        void this.start(sessionId, userId, {
+          message: `（执行链曾因服务重启中断；以下是你此前提交的人工步骤「${sr.instruction?.slice(0, 60) ?? stepRunId}」的结果，请据此继续）${summary}`,
+        }).catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : '自动恢复失败';
+          this.repos.agent.updateStatus(sessionId, 'planning', `自动恢复失败：${msg}；请在会话页发送消息重试`);
+          this.bus.emit('agent:error', {
+            event: 'agent:error',
+            sessionId,
+            message: `人工步骤结果已保存，但自动恢复执行失败（${msg}）。发送任意消息即可重试。`,
+          });
         });
         return;
       }

@@ -58,11 +58,14 @@ export default function HumanStepCard({
   onComplete,
   onReportIssue,
   active,
+  sessionStatus,
 }: {
   step: HumanStepState;
   onComplete: (body: { outcome?: string; fileRefs: string[]; functionModule?: string; status: 'success' | 'fail' | 'blocked' }) => Promise<void> | void;
   onReportIssue?: (note: string) => void;
   active?: boolean;
+  /** 会话当前状态：决定“已提交”横幅措辞（running=真继续；planning=恢复中；其他=已保存） */
+  sessionStatus?: string;
 }) {
   const [rich, setRich] = useState<RichValue>({ markdown: '', fileRefs: [] });
   const [submitting, setSubmitting] = useState(false);
@@ -136,7 +139,9 @@ export default function HumanStepCard({
           </Typography.Text>
           {step.functionModule && <Tag>{step.functionModule}</Tag>}
           {step.completed ? (
-            <Tag icon={<CheckCircleOutlined />} color="success">Agent 已收到，继续执行中</Tag>
+            <Tag icon={<CheckCircleOutlined />} color="success">
+              {sessionStatus === 'running' ? 'Agent 已收到，继续执行中' : sessionStatus === 'planning' ? '已提交，正在恢复执行' : '已提交，结果已保存'}
+            </Tag>
           ) : (
             <Tag color="warning">待人工处理</Tag>
           )}
@@ -181,7 +186,11 @@ export default function HumanStepCard({
           style={{ marginTop: 10 }}
           type="success"
           showIcon
-          message="已闭环：Agent 确认收到你的提交"
+          message={sessionStatus === 'running'
+            ? '已闭环：Agent 确认收到你的提交'
+            : sessionStatus === 'planning'
+              ? '已提交：执行链正在自动恢复，稍候将继续'
+              : '已提交：结果已保存并同步给执行链'}
           description={
             <div style={{ fontSize: 12 }}>
               <div>
@@ -190,7 +199,9 @@ export default function HumanStepCard({
               </div>
               {step.outcome && <div style={{ marginTop: 4 }}><MiniMarkdown text={step.outcome} /></div>}
               <div style={{ marginTop: 6, color: '#64748b' }}>
-                无需更多操作——Agent 已带着这些信息继续评估；如需补充，直接在下方输入框留言即可。
+                {sessionStatus === 'running'
+                  ? '无需更多操作——Agent 已带着这些信息继续评估；如需补充，直接在下方输入框留言即可。'
+                  : 'Agent 会带着这些结果继续；若长时间未见新动作，在下方输入框发一条消息即可唤醒。'}
               </div>
             </div>
           }

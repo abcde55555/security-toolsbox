@@ -32,9 +32,11 @@ export default function PhaseTimeline({
   onReportIssue,
   onOpenEvidence,
   onAttachEvidence,
+  sessionStatus,
 }: {
   state: AgentSessionState;
   currentStepId?: string;
+  sessionStatus?: string;
   onCompleteHumanStep: (stepRunId: string, body: {
     outcome?: string;
     fileRefs: string[];
@@ -117,6 +119,7 @@ export default function PhaseTimeline({
                         <HumanStepCard
                           step={it.data}
                           active={active}
+                          sessionStatus={sessionStatus ?? state.session?.status}
                           onComplete={(body) => onCompleteHumanStep(it.data.stepRunId, body)}
                           onReportIssue={(note) => onReportIssue?.(it.data.stepRunId, note)}
                         />
