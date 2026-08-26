@@ -7,20 +7,48 @@ import { createInMemoryRepositories, type Repositories } from '../repositories/i
 import { buildWorkbench, deriveNextSuggestion } from '../services/workbenchService.js';
 import { projectRoutes } from '../routes/projects.js';
 import { getServices } from '../services/index.js';
+import type { TemplateVariable } from '@en18031/shared';
 import { nowIso } from '@en18031/shared';
 
 // ---- 数据构造辅助（全部走现有 repo 写入接口） ----
 
-function makeProject(repos: Repositories, name: string) {
+function makeProject(repos: Repositories, name: string, opts: { templateId?: string; variables?: Record<string, unknown> } = {}) {
   return repos.projects.create({
     name,
-    templateId: 'agent',
+    templateId: opts.templateId ?? 'ghost-template', // 无对应模板行 → R6/R7 跳过
     templateVersionSnapshot: 1,
     standardVersion: 'EN18031:2019',
     targetComplianceLevel: 'L1',
-    variables: {},
+    variables: opts.variables ?? {},
     createdBy: 'tester',
   });
+}
+
+/** 建一个带必填变量与一个步骤的真实模板；varsFilled=false 时项目留空必填变量。 */
+function makeTemplateProject(repos: Repositories, name: string, opts: { fillVars?: boolean; withToolStep?: boolean } = {}) {
+  const variables: TemplateVariable[] = [
+    { name: 'target_ip', label: '目标 IP', type: 'ip', required: true },
+  ];
+  const steps = opts.withToolStep
+    ? [
+        {
+          stepId: 's1',
+          title: '扫描',
+          toolId: 'no-such-tool',
+          toolVersion: '1.0.0',
+          params: {},
+          dependsOn: [],
+          onFailure: 'continue' as const,
+          position: 0,
+        },
+      ]
+    : [];
+  const tpl = repos.templates.create({ name: `${name}-tpl`, variables, steps, createdBy: 'tester' });
+  const project = makeProject(repos, name, {
+    templateId: tpl.id,
+    variables: opts.fillVars === false ? {} : { target_ip: '10.0.0.1' },
+  });
+  return { tpl, project };
 }
 
 function makeSessionWithRun(repos: Repositories, projectId: string) {
@@ -81,78 +109,120 @@ const EMPTY_SUMMARY = {
   failBySeverity: { high: 0, middle: 0, low: 0 },
 };
 
-describe('workbench nextSuggestion 分支', () => {
-  it('无会话 → create_session', () => {
+describe('workbench nextSuggestion：§4.3 八级优先级分支', () => {
+  it('R8 兜底：无模板/无 run/无会话 → agent_or_config', () => {
     const { repos, close } = createInMemoryRepositories();
     try {
-      const p = makeProject(repos, 'WB-空项目');
+      const p = makeProject(repos, 'WB-R8');
       const wb = buildWorkbench(repos, p.id);
       expect(wb.sessions).toHaveLength(0);
       expect(wb.humanTodos).toHaveLength(0);
       expect(wb.verdictDrafts).toHaveLength(0);
       expect(wb.evidenceCount).toBe(0);
-      expect(wb.nextSuggestion.action).toBe('create_session');
       expect(wb.latestReport).toBeNull();
       expect(wb.latestRun).toBeNull();
+      expect(wb.nextSuggestion.priority).toBe(8);
+      expect(wb.nextSuggestion.action).toBe('agent_or_config');
     } finally {
       close();
     }
   });
 
-  it('waiting_human + 未完成人工步骤 → handle_human_todos（含 todo 定位与每会话计数）', () => {
+  it('R7 无 run 且预检就绪 → start_run', () => {
     const { repos, close } = createInMemoryRepositories();
     try {
-      const p = makeProject(repos, 'WB-人工待办');
-      const { session, run } = makeSessionWithRun(repos, p.id);
-      repos.agent.updateStatus(session.id, 'waiting_human');
-      addHumanStep(repos, { sessionId: session.id, projectRunId: run.id });
-
-      const wb = buildWorkbench(repos, p.id);
-      expect(wb.humanTodos).toHaveLength(1);
-      expect(wb.humanTodos[0].sessionId).toBe(session.id);
-      expect(wb.sessions[0].status).toBe('waiting_human');
-      expect(wb.sessions[0].pendingHumanStepCount).toBe(1);
-      expect(wb.nextSuggestion.action).toBe('handle_human_todos');
-      expect(wb.nextSuggestion.sessionId).toBe(session.id);
-      expect(wb.nextSuggestion.todoStepRunId).toBe(wb.humanTodos[0].stepRunId);
+      const { project } = makeTemplateProject(repos, 'WB-R7'); // 必填变量已填
+      const wb = buildWorkbench(repos, project.id);
+      expect(wb.nextSuggestion.priority).toBe(7);
+      expect(wb.nextSuggestion.action).toBe('start_run');
+      expect(wb.nextSuggestion.templateId).toBeTruthy();
     } finally {
       close();
     }
   });
 
-  it('会话运行中 → follow_session；且优先级高于判定草案审核', () => {
+  it('R6 预检有缺口 → fix_preflight（缺变量 / 工具缺口都计数）', () => {
     const { repos, close } = createInMemoryRepositories();
     try {
-      const p = makeProject(repos, 'WB-进行中');
-      const { session, run } = makeSessionWithRun(repos, p.id);
-      repos.agent.updateStatus(session.id, 'running');
-      repos.agent.updatePhase(session.id, 'adjudication'); // schema 触发器要求判定产生于 adjudication 阶段
-      const step = repos.projects.createAgentStepRun({
-        projectRunId: run.id,
-        stepId: 'collect-1',
-        stepSnapshot: {},
-        stepType: 'tool_exec',
-        phase: 'collection',
-        agentSessionId: session.id,
+      // 缺必填变量
+      const a = makeTemplateProject(repos, 'WB-R6a', { fillVars: false });
+      const wba = buildWorkbench(repos, a.project.id);
+      expect(wba.nextSuggestion.priority).toBe(6);
+      expect(wba.nextSuggestion.action).toBe('fix_preflight');
+      expect(wba.nextSuggestion.missingVariables).toContain('target_ip');
+      expect(wba.nextSuggestion.gapCount).toBeGreaterThanOrEqual(1);
+
+      // 变量已填但步骤引用的工具缺失
+      const b = makeTemplateProject(repos, 'WB-R6b', { withToolStep: true });
+      const wbb = buildWorkbench(repos, b.project.id);
+      expect(wbb.nextSuggestion.action).toBe('fix_preflight');
+      expect(wbb.nextSuggestion.missingVariables).toEqual([]);
+      expect(wbb.nextSuggestion.gapCount).toBe(1);
+    } finally {
+      close();
+    }
+  });
+
+  it('R1a 模板编排存在非终态 run → monitor_run（含 runId 与百分比）', () => {
+    const { repos, close } = createInMemoryRepositories();
+    try {
+      const { project } = makeTemplateProject(repos, 'WB-R1a');
+      const run = repos.projects.createRun({
+        projectId: project.id,
+        startedBy: 'tester',
+        snapshotVariables: {},
       });
-      addVerdictDraft(repos, { projectId: p.id, projectRunId: run.id, stepRunId: step.id });
+      repos.projects.updateRun(run.id, { progressPercent: 40 });
 
-      const wb = buildWorkbench(repos, p.id);
-      expect(wb.verdictDrafts).toHaveLength(1); // 草案存在
-      expect(wb.nextSuggestion.action).toBe('follow_session');
-      expect(wb.nextSuggestion.sessionId).toBe(session.id);
+      const wb = buildWorkbench(repos, project.id);
+      expect(wb.nextSuggestion.priority).toBe(1);
+      expect(wb.nextSuggestion.action).toBe('monitor_run');
+      expect(wb.nextSuggestion.runId).toBe(run.id);
+      expect(wb.nextSuggestion.percent).toBe(40);
+      expect(wb.nextSuggestion.title).toContain('40%');
     } finally {
       close();
     }
   });
 
-  it('有判定草案且无进行中会话 → review_verdicts（优先于查看报告）', () => {
+  it('R1b agent 会话活跃 → monitor_run 定位会话；waiting_human 让位 R2（agent run 不算运行中）', () => {
     const { repos, close } = createInMemoryRepositories();
     try {
-      const p = makeProject(repos, 'WB-待审核');
+      // 活跃 planning 会话：其 run 行也是非终态，但建议应指向会话
+      const p1 = makeProject(repos, 'WB-R1b');
+      const s1 = makeSessionWithRun(repos, p1.id);
+      const wb1 = buildWorkbench(repos, p1.id);
+      expect(wb1.latestRun?.status).toBe('running'); // run 行确实非终态
+      expect(wb1.nextSuggestion.priority).toBe(1);
+      expect(wb1.nextSuggestion.action).toBe('monitor_run');
+      expect(wb1.nextSuggestion.sessionId).toBe(s1.session.id);
+      expect(wb1.nextSuggestion.runId).toBeUndefined();
+
+      // waiting_human + 待办：run 行非终态但不算“运行中”，让位 R2
+      const p2 = makeProject(repos, 'WB-R2-precedence');
+      const s2 = makeSessionWithRun(repos, p2.id);
+      repos.agent.updateStatus(s2.session.id, 'waiting_human');
+      addHumanStep(repos, { sessionId: s2.session.id, projectRunId: s2.run.id });
+      const wb2 = buildWorkbench(repos, p2.id);
+      expect(wb2.humanTodos).toHaveLength(1);
+      expect(wb2.sessions[0].pendingHumanStepCount).toBe(1);
+      expect(wb2.nextSuggestion.priority).toBe(2);
+      expect(wb2.nextSuggestion.action).toBe('handle_human_todos');
+      expect(wb2.nextSuggestion.sessionId).toBe(s2.session.id);
+      expect(wb2.nextSuggestion.todoStepRunId).toBe(wb2.humanTodos[0].stepRunId);
+    } finally {
+      close();
+    }
+  });
+
+  it('R3 有判定草案且无更高优先级事项 → review_verdicts（先于生成报告）', () => {
+    const { repos, close } = createInMemoryRepositories();
+    try {
+      const p = makeProject(repos, 'WB-R3');
       const { session, run } = makeSessionWithRun(repos, p.id);
       repos.agent.finish(session.id, 'done');
       repos.agent.updatePhase(session.id, 'adjudication'); // schema 触发器要求判定产生于 adjudication 阶段
+      repos.projects.updateRun(run.id, { status: 'success', finishedAt: nowIso() }); // 收尾 run，排除 R1/R4 干扰
       const step = repos.projects.createAgentStepRun({
         projectRunId: run.id,
         stepId: 'adjudicate-1',
@@ -162,113 +232,71 @@ describe('workbench nextSuggestion 分支', () => {
         agentSessionId: session.id,
       });
       addVerdictDraft(repos, { projectId: p.id, projectRunId: run.id, stepRunId: step.id });
-      // 已有报告也不影响：审核排在查看报告之前
-      repos.reports.save({
-        projectId: p.id,
-        format: 'snapshot',
-        grade: 'FAIL',
-        summary: EMPTY_SUMMARY,
-        generatedBy: 'tester',
-      });
 
       const wb = buildWorkbench(repos, p.id);
       expect(wb.verdictDrafts).toHaveLength(1);
-      expect(wb.latestReport).not.toBeNull();
+      expect(wb.nextSuggestion.priority).toBe(3);
       expect(wb.nextSuggestion.action).toBe('review_verdicts');
+      expect(wb.nextSuggestion.verdictCount).toBe(1);
       expect(wb.nextSuggestion.verdictId).toBe(wb.verdictDrafts[0].id);
     } finally {
       close();
     }
   });
 
-  it('已完成且有最新报告 → view_report（携带 reportId 与证据计数）', () => {
+  it('R4 报告缺失或过期 → generate_report；报告新鲜则落到兜底（R5 服务端不产出）', () => {
     const { repos, close } = createInMemoryRepositories();
     try {
-      const p = makeProject(repos, 'WB-已完成');
-      const { session, run } = makeSessionWithRun(repos, p.id);
-      repos.agent.finish(session.id, 'done');
-      const step = repos.projects.createAgentStepRun({
-        projectRunId: run.id,
-        stepId: 'evidence-1',
-        stepSnapshot: {},
-        stepType: 'evidence_attach',
-        phase: 'collection',
-        agentSessionId: session.id,
-      });
-      for (let i = 0; i < 3; i++) {
-        repos.results.insertEvidence({
-          stepRunId: step.id,
-          projectRunId: run.id,
-          projectId: p.id,
-          type: 'file_pointer',
-          content: `证据 ${i}`,
-          severity: 'low',
-          sourceStepType: 'evidence_attach',
-        });
-      }
-      const report = repos.reports.save({
+      const p = makeProject(repos, 'WB-R4');
+      const run = repos.projects.createRun({
         projectId: p.id,
-        format: 'pdf',
-        grade: 'PASS',
-        summary: EMPTY_SUMMARY,
-        generatedBy: 'tester',
+        startedBy: 'tester',
+        snapshotVariables: {},
       });
+      const finishedAt = new Date(Date.now() - 60_000).toISOString();
+      repos.projects.updateRun(run.id, { status: 'success', finishedAt });
 
-      const wb = buildWorkbench(repos, p.id);
-      expect(wb.evidenceCount).toBe(3);
-      expect(wb.latestReport?.id).toBe(report.id);
-      expect(wb.nextSuggestion.action).toBe('view_report');
-      expect(wb.nextSuggestion.reportId).toBe(report.id);
+      // 缺报告
+      const wbMissing = buildWorkbench(repos, p.id);
+      expect(wbMissing.nextSuggestion.priority).toBe(4);
+      expect(wbMissing.nextSuggestion.action).toBe('generate_report');
+      expect(wbMissing.nextSuggestion.reportId).toBeUndefined();
+
+      // 过期报告（generatedAt 早于 run 收尾时间）
+      repos.reports.save({ projectId: p.id, format: 'snapshot', grade: 'FAIL', summary: EMPTY_SUMMARY, generatedBy: 'tester' });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = (repos.reports as any).db as import('better-sqlite3').Database;
+      db.prepare("UPDATE reports SET generatedAt=? WHERE projectId=?").run(
+        new Date(Date.now() - 120_000).toISOString(),
+        p.id,
+      );
+      const wbStale = buildWorkbench(repos, p.id);
+      expect(wbStale.nextSuggestion.action).toBe('generate_report');
+
+      // 新鲜报告（generatedAt 晚于 run 收尾）→ 跳过 R4；R5 无导出标记不产出 → 兜底 R8
+      db.prepare("UPDATE reports SET generatedAt=? WHERE projectId=?").run(nowIso(), p.id);
+      const wbFresh = buildWorkbench(repos, p.id);
+      expect(wbFresh.latestReport).not.toBeNull();
+      expect(wbFresh.nextSuggestion.action).not.toBe('generate_report');
+      expect(wbFresh.nextSuggestion.action).not.toBe('export_report');
+      expect(wbFresh.nextSuggestion.priority).toBe(8);
     } finally {
       close();
     }
   });
 
-  it('只剩 aborted 会话且无报告 → 兜底建议新建会话', () => {
-    const { repos, close } = createInMemoryRepositories();
-    try {
-      const p = makeProject(repos, 'WB-已中止');
-      const { session } = makeSessionWithRun(repos, p.id);
-      repos.agent.finish(session.id, 'aborted');
-
-      const wb = buildWorkbench(repos, p.id);
-      expect(wb.nextSuggestion.action).toBe('create_session');
-    } finally {
-      close();
-    }
-  });
-
-  it('deriveNextSuggestion 纯函数：waiting_human 优先于 follow_session', () => {
+  it('deriveNextSuggestion 纯函数：R5 export_report 永不由服务端返回', () => {
     const s = deriveNextSuggestion({
-      sessions: [
-        { id: 's-running', status: 'running', phase: 'collection' },
-        { id: 's-wait', status: 'waiting_human', phase: 'collection' },
-      ],
-      humanTodos: [
-        {
-          stepRunId: 'sr-1',
-          sessionId: 's-wait',
-          sessionName: 'x',
-          instruction: 'y',
-          phase: null,
-          updatedAt: '',
-        },
-      ],
-      verdictDrafts: [],
-      latestReport: null,
-    });
-    expect(s.action).toBe('handle_human_todos');
-    expect(s.sessionId).toBe('s-wait');
-
-    // 无待办但状态为 waiting_human 时也能给出建议（降级只给 sessionId）
-    const s2 = deriveNextSuggestion({
-      sessions: [{ id: 's-wait2', status: 'waiting_human', phase: 'review' }],
+      runs: [],
+      sessions: [],
       humanTodos: [],
       verdictDrafts: [],
-      latestReport: null,
+      latestReport: { id: 'r1', generatedAt: nowIso() },
+      preflightGaps: null,
+      templateId: null,
     });
-    expect(s2.action).toBe('handle_human_todos');
-    expect(s2.sessionId).toBe('s-wait2');
+    expect(s.action).not.toBe('export_report');
+    expect(s.priority).toBe(8);
   });
 });
 
@@ -299,11 +327,12 @@ describe('GET /api/projects/:id/workbench 路由', () => {
     expect(Array.isArray(body.data.humanTodos)).toBe(true);
     expect(Array.isArray(body.data.verdictDrafts)).toBe(true);
     expect(typeof body.data.evidenceCount).toBe('number');
-    expect(body.data.nextSuggestion.action).toBe('create_session');
+    expect(body.data.nextSuggestion.action).toBe('agent_or_config');
+    expect(body.data.nextSuggestion.priority).toBe(8);
     await app.close();
   });
 
-  it('同一项目的数据变化会反映在聚合结果中（创建会话后建议切换）', async () => {
+  it('同一项目的数据变化会反映在聚合结果中（创建活跃会话后建议切换）', async () => {
     const app = await buildApp();
     const repos = getServices().repos;
     const p = makeProject(repos, `WB-HTTP2-${Date.now()}`);
@@ -311,16 +340,42 @@ describe('GET /api/projects/:id/workbench 路由', () => {
     const before = JSON.parse(
       (await app.inject({ method: 'GET', url: `/api/projects/${p.id}/workbench` })).body,
     );
-    expect(before.data.nextSuggestion.action).toBe('create_session');
+    expect(before.data.nextSuggestion.action).toBe('agent_or_config');
 
-    const { session } = makeSessionWithRun(repos, p.id);
-    // planning 状态属于“进行中”
+    const { session } = makeSessionWithRun(repos, p.id); // planning 属于活跃会话
     const after = JSON.parse(
       (await app.inject({ method: 'GET', url: `/api/projects/${p.id}/workbench` })).body,
     );
     expect(after.data.sessions.map((s: { id: string }) => s.id)).toContain(session.id);
-    expect(after.data.nextSuggestion.action).toBe('follow_session');
+    expect(after.data.nextSuggestion.action).toBe('monitor_run');
     expect(after.data.nextSuggestion.sessionId).toBe(session.id);
+    await app.close();
+  });
+
+  it('证据与待办计数随数据增长（evidenceCount / pendingHumanStepCount）', async () => {
+    const app = await buildApp();
+    const repos = getServices().repos;
+    const p = makeProject(repos, `WB-HTTP3-${Date.now()}`);
+    const { session, run } = makeSessionWithRun(repos, p.id);
+    repos.agent.updateStatus(session.id, 'waiting_human');
+    const step = addHumanStep(repos, { sessionId: session.id, projectRunId: run.id });
+    for (let i = 0; i < 3; i++) {
+      repos.results.insertEvidence({
+        stepRunId: step.id,
+        projectRunId: run.id,
+        projectId: p.id,
+        type: 'file_pointer',
+        content: `证据 ${i}`,
+        severity: 'low',
+        sourceStepType: 'evidence_attach',
+      });
+    }
+
+    const res = await app.inject({ method: 'GET', url: `/api/projects/${p.id}/workbench` });
+    const body = JSON.parse(res.body);
+    expect(body.data.evidenceCount).toBe(3);
+    expect(body.data.humanTodos).toHaveLength(1);
+    expect(body.data.nextSuggestion.priority).toBe(2);
     await app.close();
   });
 });

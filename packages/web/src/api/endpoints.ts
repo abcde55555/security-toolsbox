@@ -595,3 +595,66 @@ export const SettingsApi = {
       { id },
     ),
 };
+
+// ===== 项目工作台聚合（仅追加，见 docs/api-workbench.md 与蓝图 §4.3）=====
+
+/** 服务端 nextSuggestion.action —— 与 workbenchService.WorkbenchNextAction 对齐 */
+export type WorkbenchNextAction =
+  | 'monitor_run' // R1 存在进行中的执行（模板 run 非终态，或 agent 会话活跃）
+  | 'handle_human_todos' // R2 本项目有未完成人工步骤
+  | 'review_verdicts' // R3 有 pending_review 判定草案
+  | 'generate_report' // R4 最新 run 已终态但报告缺失/过期
+  | 'export_report' // R5 报告未导出（服务端暂不产出，保留）
+  | 'fix_preflight' // R6 预检有缺口
+  | 'start_run' // R7 无 run 且模板就绪
+  | 'agent_or_config'; // R8 兜底：发起 Agent 会话 / 配置变量
+
+/** 服务端 nextSuggestion（字段口径 = packages/server/src/services/workbenchService.ts） */
+export interface WorkbenchSuggestion {
+  /** 命中的规则优先级（1..8；5 由服务端保留但不产出） */
+  priority: number;
+  action: WorkbenchNextAction;
+  /** 可直接作为主按钮文案（已含计数/百分比等动态片段） */
+  title: string;
+  reason: string;
+  runId?: string;
+  percent?: number;
+  sessionId?: string;
+  todoStepRunId?: string;
+  verdictCount?: number;
+  verdictId?: string;
+  reportId?: string;
+  gapCount?: number;
+  missingVariables?: string[];
+  templateId?: string;
+}
+
+export interface WorkbenchHumanTodo {
+  stepRunId: string;
+  sessionId: string;
+  sessionName: string;
+  instruction: string;
+  phase?: string | null;
+  updatedAt: string;
+}
+
+export type WorkbenchSession = AgentSession & { pendingHumanStepCount: number };
+
+export interface WorkbenchPayload {
+  project: Project;
+  latestRun: ProjectRun | null;
+  sessions: WorkbenchSession[];
+  humanTodos: WorkbenchHumanTodo[];
+  verdictDrafts: VerdictDraft[];
+  evidenceCount: number;
+  latestReport: Report | null;
+  nextSuggestion: WorkbenchSuggestion;
+}
+
+export const WorkbenchApi = {
+  get: (projectId: string) => api.get<WorkbenchPayload>(`/projects/${projectId}/workbench`),
+  /** ——以下两个仅供 useNextAction 客户端回退路径使用（既有只读接口的补装封装，不改任何既有封装）—— */
+  globalHumanTodos: () => api.get<WorkbenchHumanTodo[]>('/agent/human-todos'),
+  pendingVerdicts: (projectId: string) =>
+    api.get<VerdictDraft[]>(`/agent/projects/${projectId}/pending-verdicts`),
+};

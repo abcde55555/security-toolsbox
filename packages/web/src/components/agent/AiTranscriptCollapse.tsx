@@ -39,10 +39,9 @@ export interface AgentWorkbenchProps {
 }
 
 /**
- * 底部工作台面板：不再把原始对话流水冒充「规划记录」，
- * 而是先给执行概览（阶段/步骤/证据/判定），对话原文降级为「模型交互明细」。
+ * 待办清单复用件：会话页工作台面板与项目总览（OverviewTab）共用。
  */
-function TodoList({ items, kind, onFocus }: { items: WorkTodoItem[]; kind: 'human' | 'run'; onFocus?: (id: string) => void }) {
+export function TodoList({ items, kind, onFocus }: { items: WorkTodoItem[]; kind: 'human' | 'run'; onFocus?: (id: string) => void }) {
   if (items.length === 0) {
     return (
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>

@@ -28,8 +28,10 @@ import TerminalTab, { type LogLine } from '../components/project/TerminalTab';
 import ProjectExecutions from '../components/project/ProjectExecutions';
 import AuditTab from '../components/project/AuditTab';
 import ReportTab from '../components/project/ReportTab';
+import OverviewTab from '../components/project/OverviewTab';
 import StepDetailDrawer from '../components/project/StepDetailDrawer';
 import PreflightModal from '../components/PreflightModal';
+import { useNextAction, actionToStepKey } from '../hooks/useNextAction';
 import type { StepRunDetail, ReportDetail } from '../api/endpoints';
 
 const { Content } = Layout;
@@ -47,7 +49,8 @@ export default function ProjectDetail() {
   const [progress, setProgress] = useState(0);
   const [eta, setEta] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
-  const [tab, setTab] = useState('flow');
+  const [tab, setTab] = useState('overview'); // 默认落在总览（工作台一屏，蓝图 Phase 1）
+  const wb = useNextAction(id);
   const [busy, setBusy] = useState(false);
   const [headerLoading, setHeaderLoading] = useState(true);
   const [stepDetail, setStepDetail] = useState<StepRunDetail | null>(null);
@@ -411,12 +414,27 @@ export default function ProjectDetail() {
         latestRun={project?.latestRun}
         reportGenerated={!!report}
         onGoto={(t) => setTab(t)}
+        emphasis={wb.next ? actionToStepKey(wb.next.kind) : undefined}
+        onGotoAgent={() => navigate('/agent')}
       />
 
       <Tabs
         activeKey={tab}
         onChange={setTab}
         items={[
+          {
+            key: 'overview',
+            label: '总览',
+            children: (
+              <OverviewTab
+                projectId={id}
+                wb={wb}
+                onGotoTab={(t) => setTab(t)}
+                onStartTest={() => setPreflightOpen(true)}
+                onCancelRun={() => void cancelRun()}
+              />
+            ),
+          },
           {
             key: 'flow',
             label: '执行流程',
