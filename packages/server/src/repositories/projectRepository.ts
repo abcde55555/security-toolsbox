@@ -322,24 +322,28 @@ export class ProjectRepository {
     phase: string | null;
     updatedAt: string;
   }> {
+    // 注意：agent_sessions 没有 name 列（创建时的 name 未持久化），标题用指令摘要代替
     const rows = this.db
       .prepare(
-        `SELECT sr.id AS stepRunId, sr.agentSessionId AS sessionId, s.name AS sessionName,
-                sr.instruction, sr.phase, sr.updatedAt
+        `SELECT sr.id AS stepRunId, sr.agentSessionId AS sessionId, sr.instruction,
+                sr.phase, COALESCE(sr.startedAt, sr.finishedAt, '') AS updatedAt, s.projectId
          FROM step_runs sr JOIN agent_sessions s ON s.id = sr.agentSessionId
          WHERE sr.stepType='human_instruction' AND sr.status='running'
            AND s.status IN ('running','waiting_human')
-         ORDER BY sr.updatedAt ASC`,
+         ORDER BY COALESCE(sr.startedAt, sr.finishedAt) ASC`,
       )
       .all() as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      stepRunId: String(r.stepRunId),
-      sessionId: String(r.sessionId),
-      sessionName: String(r.sessionName ?? ''),
-      instruction: String(r.instruction ?? ''),
-      phase: r.phase ? String(r.phase) : null,
-      updatedAt: String(r.updatedAt ?? ''),
-    }));
+    return rows.map((r) => {
+      const instruction = String(r.instruction ?? '');
+      return {
+        stepRunId: String(r.stepRunId),
+        sessionId: String(r.sessionId),
+        sessionName: instruction.slice(0, 40) || `项目 ${String(r.projectId ?? '').slice(0, 8)}`,
+        instruction,
+        phase: r.phase ? String(r.phase) : null,
+        updatedAt: String(r.updatedAt ?? ''),
+      };
+    });
   }
 
   getStepRun(id: string): StepRun | null {

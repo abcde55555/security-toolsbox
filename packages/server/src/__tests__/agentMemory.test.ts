@@ -80,3 +80,36 @@ describe('extractMemories', () => {
     expect(repos.agentMemories.listBySession('sx')).toHaveLength(0);
   });
 });
+
+describe('listPendingHumanSteps（真实 schema 回归）', () => {
+  it('在无 name 列的 agent_sessions 上正常聚合', () => {
+    const { repos } = createInMemoryRepositories();
+    const project = repos.projects.create({
+      name: '待办项目', templateId: 't1', templateVersionSnapshot: 1,
+      standardVersion: 'EN18031', targetComplianceLevel: 'L1', variables: {}, createdBy: 'tester',
+    });
+    const run = repos.projects.createRun({ projectId: project.id, startedBy: 'tester' } as never);
+    const session = repos.agent.createSession({
+      projectId: project.id, projectRunId: run.id, standardVersion: 'EN18031',
+      selectedClauses: [], authorizedTools: [], deviceProfile: {}, createdBy: 'tester',
+    } as never);
+    repos.projects.createAgentStepRun({
+      id: 'h1',
+      projectRunId: run.id,
+      stepId: 'h1',
+      stepSnapshot: {},
+      stepType: 'human_instruction',
+      phase: 'collection',
+      agentSessionId: session.id,
+      instruction: '配置设备进入测试模式',
+    });
+    repos.agent.updateStatus(session.id, 'waiting_human');
+    repos.projects.updateStepRun('h1', { status: 'running' });
+
+    const todos = repos.projects.listPendingHumanSteps();
+    expect(todos).toHaveLength(1);
+    expect(todos[0].sessionId).toBe(session.id);
+    expect(todos[0].sessionName).toContain('配置设备');
+    expect(todos[0].instruction).toContain('测试模式');
+  });
+});
